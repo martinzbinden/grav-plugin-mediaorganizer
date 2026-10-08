@@ -1,0 +1,240 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Grav\Plugin;
+
+use Grav\Common\Page\Medium\GlobalMedia;
+use Grav\Common\Plugin;
+use RocketTheme\Toolbox\Event\Event;
+
+/**
+ * Media Organizer: Datei-Browser fuer die Mediathek (user://media) als eigene
+ * Seite im Admin2 - Ordnerbaum, Galerie und Liste, Vorschau, Herunterladen
+ * (einzeln, Ordner oder Auswahl als ZIP), Texte und EXIF bearbeiten, Bilder
+ * optimieren (Original in _original/) und wiederherstellen.
+ *
+ * Alle Dateitypen werden gelistet und lassen sich herunterladen; Vorschau,
+ * Vollbild, EXIF und Optimieren gibt es fuer Bilder.
+ *
+ * Rechte: lesen/herunterladen api.media.read, aendern api.media.write.
+ * Schnittstellen: classes/ApiController.php (/api/v1/mediaorganizer/...).
+ * Entstanden aus dem Medienarchiv des Plugins riedackerhof-templates.
+ */
+class MediaorganizerPlugin extends Plugin
+{
+    private static ?self $instance = null;
+
+    /** Rasterbilder (Vorschau ueber Grav, EXIF, Optimieren) */
+    public const BILD = '/\.(webp|jpe?g|png|gif|avif)$/i';
+    /** Dateien, die nie gelistet oder ausgeliefert werden */
+    private const VERBORGEN = '/(^\.|\.meta\.yaml$|^media_order\.yaml$)/i';
+
+    public static function instance(): ?self
+    {
+        return self::$instance;
+    }
+
+    public function __construct($name, $grav, $config = null)
+    {
+        parent::__construct($name, $grav, $config);
+        self::$instance = $this;
+        // Die API speichert ihre Routen zwischen; die Controller-Klasse muss deshalb
+        // auch ohne onApiRegisterRoutes ladbar sein.
+        spl_autoload_register(static function (string $class): void {
+            $prefix = 'Grav\\Plugin\\Mediaorganizer\\';
+            if (str_starts_with($class, $prefix)) {
+                $file = __DIR__ . '/classes/' . str_replace('\\', '/', substr($class, strlen($prefix))) . '.php';
+                if (is_file($file)) {
+                    require_once $file;
+                }
+            }
+        });
+    }
+
+    public static function getSubscribedEvents(): array
+    {
+        return [
+            'onApiRegisterRoutes' => ['onApiRegisterRoutes', 0],
+            'onApiSidebarItems' => ['onApiSidebarItems', 0],
+            'onApiPluginPageInfo' => ['onApiPluginPageInfo', 0],
+        ];
+    }
+
+    /* ---------------- Konfiguration ---------------- */
+
+    public function cfg(string $key, $default = null)
+    {
+        return $this->config->get('plugins.mediaorganizer.' . $key, $default);
+    }
+
+    public function titel(): string
+    {
+        return (string) ($this->cfg('titel') ?: 'Medienarchiv');
+    }
+
+    /** Ordnernamen, die im Baum und in Listen fehlen (z.B. Sicherungen) */
+    public function ausgeblendet(string $name): bool
+    {
+        return $name === '_original' || in_array($name, (array) $this->cfg('ausblenden', []), true);
+    }
+
+    /** Praefix fuer ZIP-Dateinamen, Standard: Hostname ohne www und Punkte */
+    public function zipPraefix(): string
+    {
+        $p = (string) $this->cfg('zip_praefix', '');
+        if ($p === '') {
+            $host = (string) ($this->grav['uri']->host() ?? 'medien');
+            $p = preg_replace('/^www\./', '', $host);
+        }
+
+        return trim((string) preg_replace('/[^a-z0-9-]+/i', '-', $p), '-') ?: 'medien';
+    }
+
+    /* ---------------- Dateien ---------------- */
+
+    public function root(): string
+    {
+        return (string) realpath((string) $this->grav['locator']->findResource('user://media', true));
+    }
+
+    /** Absoluter, gepruefter Pfad in der Mediathek (null bei ungueltigem Pfad). */
+    public function pfad(string $rel): ?string
+    {
+        $root = $this->root();
+        $rel = trim(str_replace('\\', '/', $rel), '/');
+        if ($root === '' || str_contains($rel, '..')) {
+            return null;
+        }
+        $abs = realpath($root . ($rel !== '' ? '/' . $rel : ''));
+
+        return ($abs && ($abs === $root || str_starts_with($abs, $root . '/'))) ? $abs : null;
+    }
+
+    public function istSichtbar(string $name): bool
+    {
+        return !preg_match(self::VERBORGEN, $name);
+    }
+
+    /** Gepruefter absoluter Pfad einer Datei (beliebiger Typ, nicht verborgen), sonst null. */
+    public function datei(string $rel): ?string
+    {
+        $abs = $this->pfad($rel);
+
+        return ($abs && is_file($abs) && $this->istSichtbar(basename($abs))) ? $abs : null;
+    }
+
+    /** Typ fuer die Anzeige: bild, svg, pdf oder datei */
+    public static function typ(string $name): string
+    {
+        if (preg_match(self::BILD, $name)) {
+            return 'bild';
+        }
+        $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+
+        return $ext === 'svg' ? 'svg' : ($ext === 'pdf' ? 'pdf' : 'datei');
+    }
+
+    /** Grav-Medium eines Rasterbilds (fuer verkleinerte Vorschauen), sonst null. */
+    public function medium(string $rel)
+    {
+        $rel = trim($rel, '/');
+        if (!$this->datei($rel) || !preg_match(self::BILD, $rel)) {
+            return null;
+        }
+        $medium = GlobalMedia::getInstance()['user://media/' . $rel] ?? null;
+
+        return ($medium && $medium->get('type') === 'image') ? $medium : null;
+    }
+
+    /** ZIP eines Ordners (rekursiv, alle sichtbaren Dateien) als temporaere Datei, sonst null. */
+    public function ordnerZip(string $rel): ?string
+    {
+        $abs = $this->pfad($rel);
+        if (!$abs || !is_dir($abs) || !class_exists(\ZipArchive::class)) {
+            return null;
+        }
+        $dateien = [];
+        $it = new \RecursiveIteratorIterator(
+            new \RecursiveCallbackFilterIterator(
+                new \RecursiveDirectoryIterator($abs, \FilesystemIterator::SKIP_DOTS),
+                fn ($f) => $f->isDir() ? ($f->getFilename()[0] !== '.' && !$this->ausgeblendet($f->getFilename())) : $this->istSichtbar($f->getFilename())
+            )
+        );
+        foreach ($it as $file) {
+            if ($file->isFile()) {
+                $dateien[] = $file->getPathname();
+            }
+        }
+
+        return $this->zipAus($dateien, $abs);
+    }
+
+    /** ZIP aus absoluten Pfaden; Namen relativ zu $basis. */
+    public function zipAus(array $dateien, string $basis): ?string
+    {
+        if (!class_exists(\ZipArchive::class)) {
+            return null;
+        }
+        $tmp = tempnam(sys_get_temp_dir(), 'mo');
+        $zip = new \ZipArchive();
+        $zip->open($tmp, \ZipArchive::OVERWRITE);
+        foreach ($dateien as $f) {
+            $name = ltrim(substr($f, strlen(rtrim($basis, '/'))), '/');
+            $zip->addFile($f, $name);
+            if (preg_match('/\.(webp|jpe?g|png|gif|avif|zip|pdf)$/i', $name)) {
+                $zip->setCompressionName($name, \ZipArchive::CM_STORE); // schon komprimiert
+            }
+        }
+        $zip->close();
+
+        return $tmp;
+    }
+
+    /* ---------------- Admin2-Integration ---------------- */
+
+    public function onApiRegisterRoutes(Event $event): void
+    {
+        $c = \Grav\Plugin\Mediaorganizer\ApiController::class;
+        $routes = $event['routes'];
+        $routes->get('/mediaorganizer/baum', [$c, 'baum']);
+        $routes->get('/mediaorganizer/dateien', [$c, 'dateien']);
+        $routes->get('/mediaorganizer/vorschau', [$c, 'vorschau']);
+        $routes->get('/mediaorganizer/exif', [$c, 'exif']);
+        $routes->get('/mediaorganizer/datei', [$c, 'datei']);
+        $routes->get('/mediaorganizer/zip', [$c, 'zip']);
+        $routes->post('/mediaorganizer/zip', [$c, 'zip']);
+        $routes->post('/mediaorganizer/meta', [$c, 'meta']);
+        $routes->post('/mediaorganizer/optimieren', [$c, 'optimieren']);
+        $routes->post('/mediaorganizer/wiederherstellen', [$c, 'wiederherstellen']);
+    }
+
+    public function onApiSidebarItems(Event $event): void
+    {
+        $items = $event['items'] ?? [];
+        $items[] = [
+            'id' => 'mediaorganizer',
+            'plugin' => 'mediaorganizer',
+            'label' => $this->titel(),
+            'icon' => (string) $this->cfg('icon', 'fa-images'),
+            'route' => '/plugin/mediaorganizer',
+            'priority' => (int) $this->cfg('prioritaet', 5),
+            'authorize' => 'api.media.read',
+        ];
+        $event['items'] = $items;
+    }
+
+    public function onApiPluginPageInfo(Event $event): void
+    {
+        if ($event['plugin'] !== 'mediaorganizer') {
+            return;
+        }
+        $event['definition'] = [
+            'id' => 'mediaorganizer',
+            'plugin' => 'mediaorganizer',
+            'title' => $this->titel(),
+            'icon' => (string) $this->cfg('icon', 'fa-images'),
+            'page_type' => 'component',
+        ];
+    }
+}

@@ -1,0 +1,45 @@
+name: Media Organizer
+slug: mediaorganizer
+type: plugin
+version: 1.0.0
+description: 'Datei-Browser für die Mediathek (user/media) im Admin2: Ordnerbaum, Galerie und Liste, Vorschau, Herunterladen einzeln oder als ZIP, Texte und EXIF bearbeiten, Bilder optimieren und wiederherstellen.'
+icon: images
+author:
+  name: Martin Zbinden
+license: MIT
+dependencies:
+  - { name: grav, version: '>=2.0.0' }
+  - { name: api, version: '>=1.0.0' }
+  - { name: admin2, version: '>=2.0.0' }
+
+form:
+  validation: loose
+  fields:
+    enabled:
+      type: toggle
+      label: Plugin aktiv
+      highlight: 1
+      default: 1
+      options: { 1: Ja, 0: Nein }
+      validate: { type: bool }
+    titel:
+      type: text
+      label: Name in der Seitenleiste
+      default: Medienarchiv
+    icon:
+      type: text
+      label: Symbol (Font Awesome)
+      default: fa-images
+    prioritaet:
+      type: number
+      label: Position in der Seitenleiste (kleiner = weiter oben)
+      default: 5
+    ausblenden:
+      type: array
+      label: Ausgeblendete Ordner
+      value_only: true
+      help: 'Ordnernamen, die nicht erscheinen (Sicherungen in _original sind immer ausgeblendet).'
+    zip_praefix:
+      type: text
+      label: Präfix für ZIP-Dateien
+      placeholder: 'leer = Hostname'

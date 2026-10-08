@@ -1,0 +1,9 @@
+enabled: true
+# Name in der Admin-Seitenleiste und Seitentitel
+titel: 'Medienarchiv'
+icon: 'fa-images'
+prioritaet: 5
+# Ordnernamen, die ausgeblendet werden (zusaetzlich zu _original)
+ausblenden: []
+# Praefix fuer ZIP-Dateinamen - leer = Hostname der Website
+zip_praefix: ''
