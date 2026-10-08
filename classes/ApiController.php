@@ -111,8 +111,10 @@ class ApiController extends AbstractApiController
             return ['name' => $rel === '' ? $this->plugin()->titel() : basename($rel), 'path' => $rel, 'direkt' => $direkt,
                 'total' => $direkt + array_sum(array_column($kinder, 'total')), 'kinder' => $kinder];
         };
+        $baum = $walk($root, '');
+        $baum['konvertierung'] = $this->plugin()->konvertierungInfo();
 
-        return ApiResponse::create($walk($root, ''));
+        return ApiResponse::create($baum);
     }
 
     /** GET …/dateien?ordner=…&rekursiv=1 — alle Dateien mit Eigenschaften (Bilder mit EXIF-Kurzfassung). */
@@ -265,15 +267,15 @@ class ApiController extends AbstractApiController
                     throw new \RuntimeException('EXIF nur bei Bildern');
                 }
                 if ($exifFelder) {
-                    if (!preg_match('/\.webp$/i', $abs)) {
-                        throw new \RuntimeException('EXIF nur bei WebP bearbeitbar');
+                    if (!Exif::schreibbar($abs)) {
+                        throw new \RuntimeException('EXIF nur bei WebP und JPEG bearbeitbar');
                     }
                     $p = Exif::zerlegen(Exif::tiffAusDatei($abs));
                     foreach ($exifFelder as $k => $v) {
                         [$ifd, $tag] = Exif::EDITIERBAR[$k];
                         Exif::setzeText($p, $ifd, $tag, mb_substr((string) $v, 0, 500));
                     }
-                    if (!Exif::inWebp($abs, Exif::bauen($p))) {
+                    if (!Exif::schreiben($abs, Exif::bauen($p))) {
                         throw new \RuntimeException('EXIF konnte nicht geschrieben werden');
                     }
                 }
@@ -351,8 +353,21 @@ class ApiController extends AbstractApiController
         imagealphablending($img, false);
         imagesavealpha($img, true);
         $tmp = $abs . '.tmp-opt';
-        $ziel = preg_replace('/\.(jpe?g|png|gif)$/i', '.webp', $abs);
-        if (!imagewebp($img, $tmp, $q)) {
+        // Zielformat: bei aktiver Konvertierung das eingestellte, sonst das bisherige
+        $quelle = strtolower(pathinfo($abs, PATHINFO_EXTENSION));
+        $format = $this->plugin()->konvertierungAktiv() ? $this->plugin()->konverter()->ziel()
+            : ($quelle === 'jpeg' ? 'jpg' : $quelle);
+        if ($format === 'gif' || !Konverter::verfuegbar($format === 'png' ? 'webp' : $format) && $format !== 'png') {
+            $format = 'webp';
+        }
+        $ziel = preg_replace('/\.(jpe?g|png|gif|webp|avif)$/i', '.' . $format, $abs);
+        $ok = match ($format) {
+            'jpg' => imagejpeg($img, $tmp, $q),
+            'png' => imagepng($img, $tmp, 9),
+            'avif' => imageavif($img, $tmp, $q),
+            default => imagewebp($img, $tmp, $q),
+        };
+        if (!$ok) {
             @unlink($tmp);
             throw new \RuntimeException('Speichern fehlgeschlagen');
         }
@@ -371,7 +386,9 @@ class ApiController extends AbstractApiController
             $nh = imagesy($img);
             $p['exif'][0xA002] = [4, 1, pack($p['le'] ? 'V' : 'N', $nw)];
             $p['exif'][0xA003] = [4, 1, pack($p['le'] ? 'V' : 'N', $nh)];
-            Exif::inWebp($tmp, Exif::bauen($p));
+            if (Exif::schreibbar($ziel)) {
+                Exif::schreiben($tmp, Exif::bauen($p));
+            }
             $neu = filesize($tmp);
         }
         // Backup des Originals (nur einmal: das erste Original bleibt)
@@ -393,6 +410,26 @@ class ApiController extends AbstractApiController
 
         return ['status' => 'optimiert', 'vorher' => $alt, 'nachher' => $neu,
             'breite' => imagesx($img), 'hoehe' => imagesy($img)];
+    }
+
+    /** POST …/konvertieren {pfade: […]} — ins eingestellte Zielformat umwandeln (auch wenn die automatische Konvertierung aus ist). */
+    public function konvertieren(ServerRequestInterface $request): ResponseInterface
+    {
+        $this->requirePermission($request, 'api.media.write');
+        $konverter = $this->plugin()->konverter();
+        @set_time_limit(300);
+        $ergebnis = [];
+        foreach ($this->pfade($request) as $rel) {
+            try {
+                $r = $konverter->datei($this->bild($rel));
+                $ergebnis[] = ['path' => $rel, 'status' => $r['status'], 'meldung' => $r['meldung'], 'neu' => $this->rel($r['datei'])];
+            } catch (\Throwable $e) {
+                $ergebnis[] = ['path' => $rel, 'status' => 'fehler', 'meldung' => $e->getMessage()];
+            }
+        }
+        $this->cacheUngueltig();
+
+        return ApiResponse::create($ergebnis);
     }
 
     /** POST …/wiederherstellen {pfade: […]} — Original aus _original/ zurückholen. */

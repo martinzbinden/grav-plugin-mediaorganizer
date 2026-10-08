@@ -1,8 +1,8 @@
 name: Media Organizer
 slug: mediaorganizer
 type: plugin
-version: 1.0.0
-description: 'Datei-Browser für die Mediathek (user/media) im Admin2: Ordnerbaum, Galerie und Liste, Vorschau, Herunterladen einzeln oder als ZIP, Texte und EXIF bearbeiten, Bilder optimieren und wiederherstellen.'
+version: 1.1.0
+description: 'Datei-Browser für die Mediathek (user/media) im Admin2: Ordnerbaum, Galerie und Liste, Vorschau, Herunterladen einzeln oder als ZIP, Texte und EXIF (WebP/JPEG) bearbeiten, Bilder optimieren, wiederherstellen und automatisch in ein Standardformat (WebP, JPEG, AVIF) umwandeln.'
 icon: images
 author:
   name: Martin Zbinden
@@ -43,3 +43,46 @@ form:
       type: text
       label: Präfix für ZIP-Dateien
       placeholder: 'leer = Hostname'
+    konvertierung_titel:
+      type: section
+      title: Konvertierung
+      text: 'Bilder, die im Admin in die Mediathek hochgeladen werden oder in einem geöffneten Ordner liegen, werden ins Zielformat umgewandelt. Die Ausrichtung wird korrigiert, EXIF-Daten, Titel und Sortierung bleiben erhalten. Im Medienarchiv lassen sich einzelne Bilder auch von Hand umwandeln.'
+    konvertierung.aktiv:
+      type: toggle
+      label: Automatisch umwandeln
+      default: 0
+      options: { 1: Ja, 0: Nein }
+      validate: { type: bool }
+    konvertierung.zielformat:
+      type: select
+      label: Zielformat
+      default: webp
+      options:
+        webp: 'WebP (empfohlen: klein, mit Transparenz)'
+        jpg: 'JPEG (überall lesbar; transparente Bilder bleiben unverändert)'
+        avif: 'AVIF (sehr klein; nur wenn der Server es unterstützt, ohne EXIF)'
+    konvertierung.quellformate:
+      type: checkboxes
+      label: Diese Formate umwandeln
+      use: keys
+      default: { jpg: true, png: true }
+      options:
+        jpg: JPEG
+        png: PNG
+        webp: WebP
+        gif: 'GIF (nur erstes Bild)'
+    konvertierung.qualitaet:
+      type: range
+      label: Qualität
+      default: 90
+      validate: { min: 40, max: 100, step: 1 }
+    konvertierung.png_verlustfrei:
+      type: toggle
+      label: PNG verlustfrei nach WebP
+      default: 1
+      options: { 1: Ja, 0: Nein }
+      validate: { type: bool }
+    konvertierung.max_pixel:
+      type: number
+      label: 'Maximale Pixel (darüber: Original in _original, Arbeitsdatei verkleinert)'
+      default: 25000000

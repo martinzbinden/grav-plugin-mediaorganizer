@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Grav\Plugin\Mediaorganizer;
 
 /**
- * Minimaler EXIF-Leser/-Schreiber für WebP (und Lesen aus JPEG).
+ * Minimaler EXIF-Leser/-Schreiber für WebP und JPEG.
  *
  * PHPs exif_read_data() kennt kein WebP. Diese Klasse liest den TIFF-Block aus dem
  * EXIF-Chunk, zerlegt IFD0/Exif/GPS, ändert einzelne Text-Tags und schreibt den Block
@@ -312,6 +312,84 @@ class Exif
         }
 
         return $tiff;
+    }
+
+    /** EXIF-Block in eine WebP- oder JPEG-Datei schreiben (nach Endung bzw. Signatur). */
+    public static function schreiben(string $file, string $tiff): bool
+    {
+        $fh = @fopen($file, 'rb');
+        $kopf = $fh ? (string) fread($fh, 12) : '';
+        if ($fh) {
+            fclose($fh);
+        }
+        if (substr($kopf, 0, 4) === 'RIFF' && substr($kopf, 8, 4) === 'WEBP') {
+            return self::inWebp($file, $tiff);
+        }
+        if (substr($kopf, 0, 2) === "\xFF\xD8") {
+            return self::inJpeg($file, $tiff);
+        }
+
+        return false;
+    }
+
+    /** Kann in diese Datei geschrieben werden? (WebP oder JPEG) */
+    public static function schreibbar(string $file): bool
+    {
+        return (bool) preg_match('/\.(webp|jpe?g)$/i', $file);
+    }
+
+    /**
+     * EXIF-Block (TIFF) in eine JPEG-Datei schreiben, verlustfrei: bestehendes
+     * APP1-Exif ersetzen bzw. nach SOI/APP0 einfuegen; Bilddaten bleiben gleich.
+     */
+    public static function inJpeg(string $file, string $tiff): bool
+    {
+        $d = (string) file_get_contents($file);
+        if (strlen($d) < 4 || substr($d, 0, 2) !== "\xFF\xD8") {
+            return false;
+        }
+        $nutz = "Exif\0\0" . $tiff;
+        if (strlen($nutz) + 2 > 0xFFFF) {
+            return false; // passt nicht in ein Segment
+        }
+        $app1 = "\xFF\xE1" . pack('n', strlen($nutz) + 2) . $nutz;
+        $pos = 2;
+        $vorne = '';          // APP0 (JFIF) bleibt vor dem Exif-Segment
+        $rest = '';
+        $eingefuegt = false;
+        while ($pos + 4 <= strlen($d)) {
+            if ($d[$pos] !== "\xFF") {
+                return false;
+            }
+            $marker = $d[$pos + 1];
+            if ($marker === "\xDA" || $marker === "\xD9") {   // Bilddaten: Rest unveraendert
+                $rest .= substr($d, $pos);
+                $pos = strlen($d);
+                break;
+            }
+            $len = unpack('n', substr($d, $pos + 2, 2))[1];
+            $seg = substr($d, $pos, $len + 2);
+            $pos += $len + 2;
+            $istExif = $marker === "\xE1" && substr($seg, 4, 6) === "Exif\0\0";
+            if ($istExif) {
+                continue;     // altes Exif weglassen
+            }
+            if ($marker === "\xE0" && !$eingefuegt && $rest === '') {
+                $vorne .= $seg;
+                continue;
+            }
+            $rest .= $seg;
+        }
+        if ($pos < strlen($d)) {
+            $rest .= substr($d, $pos);
+        }
+        $tmp = $file . '.tmp-exif';
+        if (file_put_contents($tmp, "\xFF\xD8" . $vorne . $app1 . $rest) === false) {
+            return false;
+        }
+        @chmod($tmp, 0644);
+
+        return rename($tmp, $file);
     }
 
     /** EXIF-Block (TIFF) in eine WebP-Datei schreiben, verlustfrei (atomar über Temp-Datei). */

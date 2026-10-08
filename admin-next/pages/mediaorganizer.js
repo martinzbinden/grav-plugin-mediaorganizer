@@ -282,6 +282,7 @@ details summary { cursor: pointer; color: var(--akzent); margin: .8rem 0 .4rem; 
         try {
             this.#tree = await this._api('GET', '/baum');
             this.$('.seitentitel').textContent = this.#tree.name;
+            this._konv = this.#tree.konvertierung || null;
             this._wurzelName = this.#tree.name;
             if (!this.#prefs.offen.length) this.#prefs.offen = [''];
             this._baumZeichnen();
@@ -424,6 +425,16 @@ details summary { cursor: pointer; color: var(--akzent); margin: .8rem 0 .4rem; 
         this._auswahlMarkieren();
     }
 
+    /** EXIF schreibbar (WebP, JPEG)? */
+    _exifOk(i) { return /\.(webp|jpe?g)$/i.test(i.file); }
+    /** Ins Zielformat umwandelbar? */
+    _konvOk(i) {
+        const k = this._konv;
+        if (!k || !k.verfuegbar || i.typ !== 'bild') return false;
+        const ext = i.file.split('.').pop().toLowerCase().replace('jpeg', 'jpg');
+        return ext !== k.ziel && (k.quellen || []).map(q => String(q).toLowerCase().replace('jpeg', 'jpg')).includes(ext);
+    }
+
     /** Vorschau: Rasterbild (verkleinert), SVG (Datei als Blob) oder Typ-Kachel */
     _vorschauHtml(i, w, crop, klein = false) {
         if (i.typ === 'bild') return `<img data-pfad="${this.esc(i.path)}" data-w="${w}" data-crop="${crop}" alt="">`;
@@ -561,13 +572,14 @@ details summary { cursor: pointer; color: var(--akzent); margin: .8rem 0 .4rem; 
             <h3>Mediathek-Texte</h3>
             ${META_FELDER.map(([k, t]) => `<div class="feld einzeln"><label for="f-${k}">${t}</label>${k === 'caption' ? `<textarea id="f-${k}" data-f="${k}">${this.esc(i[k] || '')}</textarea>` : `<input type="text" id="f-${k}" data-f="${k}" value="${this.esc(i[k] || '')}">`}</div>`).join('')}
             <h3>EXIF</h3>
-            ${EXIF_FELDER.map(([k, t]) => `<div class="feld einzeln"><label for="f-${k}">${t}</label><input type="text" id="f-${k}" data-f="${k}" value="${this.esc(x[k] || '')}" ${k === 'datetime' ? 'placeholder="JJJJ:MM:TT hh:mm:ss"' : ''}></div>`).join('')}
+            ${this._exifOk(i) ? EXIF_FELDER.map(([k, t]) => `<div class="feld einzeln"><label for="f-${k}">${t}</label><input type="text" id="f-${k}" data-f="${k}" value="${this.esc(x[k] || '')}" ${k === 'datetime' ? 'placeholder="JJJJ:MM:TT hh:mm:ss"' : ''}></div>`).join('') : `<p class="hinweis">EXIF lässt sich bei ${this.esc(i.ext)} nicht bearbeiten (nur WebP und JPEG)${this._konvOk(i) ? ' – nach dem Konvertieren schon' : ''}.</p>`}
             <div class="knoepfe"><button class="btn voll speichern" disabled>Speichern</button></div>
             <details class="allexif"><summary>Alle EXIF-Daten</summary><div class="exifliste leise">Wird geladen…</div></details>
             <h3>Aktionen</h3>
             <div class="knoepfe">
               <button class="btn dl">Original herunterladen</button>
               <button class="btn opt">Optimieren…</button>
+              ${this._konvOk(i) ? `<button class="btn konv">In ${this._konv.ziel.toUpperCase()} umwandeln</button>` : ''}
               ${i.backup ? '<button class="btn warn rest">Original wiederherstellen</button>' : ''}
             </div>
             ${i.backup ? '<p class="hinweis">Das Original vor der Optimierung liegt gesichert im Unterordner _original.</p>' : ''}`;
@@ -601,6 +613,7 @@ details summary { cursor: pointer; color: var(--akzent); margin: .8rem 0 .4rem; 
         });
         d.querySelector('.dl').addEventListener('click', ev => this._herunterladen(i, ev.target));
         d.querySelector('.opt').addEventListener('click', () => this._optimierenDialog([i]));
+        d.querySelector('.konv')?.addEventListener('click', ev => this._konvertieren([i], ev.target));
         d.querySelector('.rest')?.addEventListener('click', () => this._wiederherstellen([i]));
     }
 
@@ -665,12 +678,13 @@ details summary { cursor: pointer; color: var(--akzent); margin: .8rem 0 .4rem; 
             <h3>Gemeinsam bearbeiten</h3>
             <p class="hinweis" style="margin-bottom:.5rem">Nur angehakte Felder werden geändert. Leeres Feld = Wert entfernen.</p>
             ${META_FELDER.map(feld).join('')}
-            ${bilder.length === g.length ? EXIF_FELDER.map(feld).join('') : '<p class="hinweis">EXIF-Felder nur, wenn ausschliesslich Bilder gewählt sind.</p>'}
+            ${g.every(i => this._exifOk(i)) ? EXIF_FELDER.map(feld).join('') : '<p class="hinweis">EXIF-Felder nur, wenn ausschliesslich WebP- und JPEG-Bilder gewählt sind.</p>'}
             <div class="knoepfe"><button class="btn voll mspeichern" disabled>Bei ${g.length} Dateien speichern</button></div>
             <h3>Aktionen</h3>
             <div class="knoepfe">
               <button class="btn mzip">Als ZIP herunterladen</button>
               ${bilder.length ? `<button class="btn mopt">${bilder.length === g.length ? '' : `${bilder.length} Bilder `}Optimieren…</button>` : ''}
+              ${g.some(i => this._konvOk(i)) ? `<button class="btn mkonv">${g.filter(i => this._konvOk(i)).length} in ${this._konv.ziel.toUpperCase()} umwandeln</button>` : ''}
               ${mitBackup.length ? `<button class="btn warn mrest">${mitBackup.length} Originale wiederherstellen</button>` : ''}
             </div>`;
         const knopf = d.querySelector('.mspeichern');
@@ -686,6 +700,7 @@ details summary { cursor: pointer; color: var(--akzent); margin: .8rem 0 .4rem; 
         });
         d.querySelector('.mzip').addEventListener('click', ev => this._zip(g.map(i => i.path), ev.target));
         d.querySelector('.mopt')?.addEventListener('click', () => this._optimierenDialog(bilder));
+        d.querySelector('.mkonv')?.addEventListener('click', ev => this._konvertieren(g.filter(i => this._konvOk(i)), ev.target));
         d.querySelector('.mrest')?.addEventListener('click', () => this._wiederherstellen(mitBackup));
     }
 
@@ -779,6 +794,33 @@ details summary { cursor: pointer; color: var(--akzent); margin: .8rem 0 .4rem; 
                 : `${opt} optimiert (${this.mb(vorher)} → ${this.mb(nachher)})${gleich ? `, ${gleich} ohne Ersparnis unverändert` : ''}`, fehler.length > 0);
             await this._neuLaden(pfade);
         });
+    }
+
+    async _konvertieren(g, knopf) {
+        const ziel = this._konv.ziel.toUpperCase();
+        if (!confirm(`${g.length === 1 ? 'Dieses Bild' : `${g.length} Bilder`} in ${ziel} umwandeln? Die bisherige Datei wird ersetzt (Titel und Texte gehen mit). Seiten, die direkt auf den alten Dateinamen verweisen, müssen angepasst werden.`)) return;
+        knopf.disabled = true;
+        const pfade = g.map(i => i.path);
+        let ok = 0;
+        const fehler = [], gleich = [];
+        for (let k = 0; k < pfade.length; k += 5) {
+            knopf.textContent = `Läuft… ${Math.min(k + 5, pfade.length)}/${pfade.length}`;
+            try {
+                const r = await this._api('POST', '/konvertieren', { body: { pfade: pfade.slice(k, k + 5) } });
+                for (const e of r) {
+                    if (e.status === 'umgewandelt') ok++;
+                    else if (e.status === 'unveraendert') gleich.push(`${e.path.split('/').pop()}: ${e.meldung}`);
+                    else fehler.push(`${e.path}: ${e.meldung}`);
+                }
+            } catch (e2) { fehler.push(e2.message); }
+        }
+        const teile = [`${ok} in ${ziel} umgewandelt`];
+        if (gleich.length) teile.push(`${gleich.length} unverändert (${gleich.slice(0, 2).join('; ')})`);
+        if (fehler.length) teile.push(`Fehler: ${fehler.slice(0, 3).join('; ')}`);
+        this._toast(teile.join(', '), fehler.length > 0 || (ok === 0 && gleich.length > 0));
+        this.#sel.clear();
+        await this._baumLaden();
+        await this._neuLaden(pfade);
     }
 
     async _wiederherstellen(g) {

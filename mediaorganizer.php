@@ -15,7 +15,12 @@ use RocketTheme\Toolbox\Event\Event;
  * optimieren (Original in _original/) und wiederherstellen.
  *
  * Alle Dateitypen werden gelistet und lassen sich herunterladen; Vorschau,
- * Vollbild, EXIF und Optimieren gibt es fuer Bilder.
+ * Vollbild, EXIF (WebP/JPEG) und Optimieren gibt es fuer Bilder.
+ *
+ * Konvertierung (optional, plugins.mediaorganizer.konvertierung): Bilder, die
+ * im Admin in die Mediathek hochgeladen werden oder in einem geoeffneten
+ * Ordner liegen, werden ins Zielformat umgewandelt (Standard WebP), siehe
+ * classes/Konverter.php.
  *
  * Rechte: lesen/herunterladen api.media.read, aendern api.media.write.
  * Schnittstellen: classes/ApiController.php (/api/v1/mediaorganizer/...).
@@ -55,6 +60,8 @@ class MediaorganizerPlugin extends Plugin
     public static function getSubscribedEvents(): array
     {
         return [
+            // Konvertierung: Uploads (POST /api/v1/media) und Ordneransicht (GET)
+            'onRequestHandlerInit' => ['onRequestHandlerInit', 100000],
             'onApiRegisterRoutes' => ['onApiRegisterRoutes', 0],
             'onApiSidebarItems' => ['onApiSidebarItems', 0],
             'onApiPluginPageInfo' => ['onApiPluginPageInfo', 0],
@@ -89,6 +96,75 @@ class MediaorganizerPlugin extends Plugin
         }
 
         return trim((string) preg_replace('/[^a-z0-9-]+/i', '-', $p), '-') ?: 'medien';
+    }
+
+    /* ---------------- Konvertierung ---------------- */
+
+    public function konvertierungAktiv(): bool
+    {
+        return (bool) $this->cfg('konvertierung.aktiv', false);
+    }
+
+    public function konverter(): \Grav\Plugin\Mediaorganizer\Konverter
+    {
+        $log = $this->grav['log'] ?? null;
+
+        return new \Grav\Plugin\Mediaorganizer\Konverter(
+            (array) $this->cfg('konvertierung', []),
+            $log ? static function (string $level, string $text) use ($log): void { $log->{$level}($text); } : null
+        );
+    }
+
+    /** Fuer die Admin-Seite: Einstellungen der Konvertierung */
+    public function konvertierungInfo(): array
+    {
+        $k = $this->konverter();
+
+        return ['aktiv' => $this->konvertierungAktiv(), 'ziel' => $k->ziel(),
+            'verfuegbar' => \Grav\Plugin\Mediaorganizer\Konverter::verfuegbar($k->ziel()),
+            'quellen' => $k->quellen()];
+    }
+
+    /** Unterordner der Mediathek, der nach diesem Request umgewandelt wird. */
+    private ?string $konvertierenNach = null;
+
+    public function onRequestHandlerInit($event): void
+    {
+        if (!$this->konvertierungAktiv()) {
+            return;
+        }
+        $path = rtrim($event->getRoute()->getRoute(), '/');
+        $api = '/' . trim((string) $this->config->get('plugins.api.route', '/api'), '/') . '/' . trim((string) $this->config->get('plugins.api.version_prefix', 'v1'), '/');
+        if ($path !== $api . '/media') {
+            return;
+        }
+        // Nur Admin-Anfragen (Token im Header oder als ?token=); die Berechtigung prueft danach das API-Plugin
+        if (empty($_SERVER['HTTP_AUTHORIZATION']) && empty($_SERVER['REDIRECT_HTTP_AUTHORIZATION'])
+            && empty($_SERVER['HTTP_X_API_TOKEN']) && empty($_GET['token'])) {
+            return;
+        }
+        $sub = (string) ($_GET['path'] ?? '');
+        $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+        if ($method === 'GET') {
+            $this->ordnerKonvertieren($sub);          // vor der Auflistung: Admin sieht schon das Zielformat
+        } elseif ($method === 'POST') {
+            $this->konvertierenNach = $sub;           // nach dem Upload
+            $this->enable(['onShutdown' => ['onShutdown', 0]]);
+        }
+    }
+
+    public function onShutdown(): void
+    {
+        if ($this->konvertierenNach !== null) {
+            $this->ordnerKonvertieren($this->konvertierenNach);
+        }
+    }
+
+    public function ordnerKonvertieren(string $sub): int
+    {
+        $dir = $this->pfad($sub);
+
+        return ($dir && is_dir($dir)) ? $this->konverter()->ordner($dir) : 0;
     }
 
     /* ---------------- Dateien ---------------- */
@@ -206,6 +282,7 @@ class MediaorganizerPlugin extends Plugin
         $routes->post('/mediaorganizer/zip', [$c, 'zip']);
         $routes->post('/mediaorganizer/meta', [$c, 'meta']);
         $routes->post('/mediaorganizer/optimieren', [$c, 'optimieren']);
+        $routes->post('/mediaorganizer/konvertieren', [$c, 'konvertieren']);
         $routes->post('/mediaorganizer/wiederherstellen', [$c, 'wiederherstellen']);
     }
 

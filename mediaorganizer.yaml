@@ -7,3 +7,16 @@ prioritaet: 5
 ausblenden: []
 # Praefix fuer ZIP-Dateinamen - leer = Hostname der Website
 zip_praefix: ''
+# Bilder beim Hochladen in die Mediathek (Admin) bzw. beim Oeffnen eines
+# Ordners in ein Standardformat umwandeln (EXIF bleibt erhalten)
+konvertierung:
+  aktiv: false
+  # webp, jpg oder avif (avif nur, wenn GD es unterstuetzt)
+  zielformat: webp
+  # Welche Formate umgewandelt werden (jpg, png, webp, gif)
+  quellformate: [jpg, png]
+  qualitaet: 90
+  # PNG verlustfrei nach WebP (Grafiken, Logos)
+  png_verlustfrei: true
+  # Groessere Bilder: Original unter _original/, Arbeitsdatei verkleinert
+  max_pixel: 25000000

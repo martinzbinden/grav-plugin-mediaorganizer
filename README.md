@@ -4,8 +4,9 @@ Datei-Browser für die Mediathek (`user/media`) als eigene Seite im **Admin2**
 (Grav 2): Ordnerbaum, Galerie und sortierbare Liste, Vorschau, Herunterladen
 einzeln, als Ordner-ZIP oder als ZIP einer Auswahl. Dazu Texte (Titel,
 Alt-Text, Beschriftung in `<datei>.meta.yaml`) und – bei Bildern – EXIF
-bearbeiten, Bilder optimieren (verkleinern/neu komprimieren, Original in
-`_original/`) und wiederherstellen.
+bearbeiten (WebP und JPEG, verlustfrei), Bilder optimieren (verkleinern/neu
+komprimieren, Original in `_original/`), wiederherstellen und in ein
+Standardformat umwandeln.
 
 - **Alle Dateitypen** werden gelistet und lassen sich herunterladen
   (PDF, SVG, Office, ZIP …). SVG mit Vorschau, PDF und SVG auch im Browser
@@ -20,6 +21,26 @@ bearbeiten, Bilder optimieren (verkleinern/neu komprimieren, Original in
 
 Entstanden aus dem Medienarchiv des Plugins `riedackerhof-templates`
 (riedackerhof.ch), verallgemeinert für beliebige Dateitypen.
+
+## Konvertierung
+
+Optional (`konvertierung.aktiv`): Bilder, die im Admin in die Mediathek
+hochgeladen werden oder in einem geöffneten Ordner liegen, werden ins
+Zielformat umgewandelt – Standard **WebP**, wahlweise **JPEG** oder **AVIF**
+(nur wenn GD es kann). Einstellbar sind die umzuwandelnden Quellformate, die
+Qualität und verlustfreies WebP für PNG. JPEGs werden nach der EXIF-Ausrichtung
+gedreht, EXIF-Daten (bei WebP/JPEG als Ziel), `.meta.yaml` und
+`media_order.yaml` gehen mit. Transparente Bilder werden nicht zu JPEG.
+Im Medienarchiv lassen sich Bilder auch von Hand umwandeln.
+
+```yaml
+konvertierung:
+  aktiv: true
+  zielformat: webp        # webp | jpg | avif
+  quellformate: [jpg, png]
+  qualitaet: 90
+  png_verlustfrei: true
+```
 
 ## Voraussetzungen
 
@@ -45,7 +66,8 @@ ZipArchive (ZIP-Downloads).
 `/api/v1/mediaorganizer/…`: `baum`, `dateien?ordner=&rekursiv=1`,
 `vorschau?pfad=&w=&crop=1`, `exif?pfad=`, `datei?pfad=`,
 `zip?ordner=` bzw. `POST zip {pfade}`, `POST meta {pfade, felder}`,
-`POST optimieren {pfade, max, qualitaet}`, `POST wiederherstellen {pfade}`.
+`POST optimieren {pfade, max, qualitaet}`, `POST konvertieren {pfade}`,
+`POST wiederherstellen {pfade}`.
 
 ## Lizenz
 
