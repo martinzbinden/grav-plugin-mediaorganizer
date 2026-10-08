@@ -190,8 +190,10 @@ class Journal
             if (!is_array($v)) {
                 continue;
             }
-            $v['anzahl'] = count($v['eintraege'] ?? []);
-            $v['dateien'] = array_map(fn ($e) => ['datei' => $e['datei'], 'art' => $e['vorher'] === null ? 'neu' : ($e['nachher'] === null ? 'entfernt' : 'geaendert')], $v['eintraege'] ?? []);
+            // Eintraege ohne Datei vorher und nachher (nur vorsorglich gesichert) nicht zeigen
+            $echte = array_values(array_filter($v['eintraege'] ?? [], fn ($e) => $e['vorher'] !== null || $e['nachher'] !== null));
+            $v['anzahl'] = count($echte);
+            $v['dateien'] = array_map(fn ($e) => ['datei' => $e['datei'], 'art' => $e['vorher'] === null ? 'neu' : ($e['nachher'] === null ? 'entfernt' : 'geaendert')], $echte);
             unset($v['eintraege']);
             $out[] = $v;
         }

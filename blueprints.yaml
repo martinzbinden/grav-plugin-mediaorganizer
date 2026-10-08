@@ -1,7 +1,7 @@
 name: Media Organizer
 slug: mediaorganizer
 type: plugin
-version: 1.2.0
+version: 1.2.1
 description: 'Datei-Browser für die Mediathek (user/media) im Admin2: Ordnerbaum, Galerie und Liste, Vorschau, Herunterladen einzeln oder als ZIP, Texte und EXIF (WebP/JPEG) bearbeiten, Bilder optimieren, wiederherstellen und automatisch in ein Standardformat (WebP, JPEG, AVIF) umwandeln.'
 icon: images
 author:

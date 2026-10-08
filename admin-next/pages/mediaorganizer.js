@@ -344,7 +344,7 @@ details summary { cursor: pointer; color: var(--akzent); margin: .8rem 0 .4rem; 
         inhalt.innerHTML = '<p class="leer">Wird geladen…</p>';
         let l;
         try { l = await this._api('GET', '/verlauf'); } catch (e) { inhalt.innerHTML = `<p class="leer">${this.esc(e.message)}</p>`; return; }
-        this.$('.anzahl').textContent = `${l.length} Vorgänge`;
+        this.$('.anzahl').textContent = l.length === 1 ? '1 Vorgang' : `${l.length} Vorgänge`;
         if (!l.length) { inhalt.innerHTML = '<p class="leer">Noch keine Änderungen.</p>'; return; }
         const aktion = { konvertieren: 'Umgewandelt', automatisch: 'Automatisch umgewandelt', optimieren: 'Optimiert', umbenennen: 'Umbenannt', papierkorb: 'Papierkorb', kopieren: 'Kopiert', texte: 'Texte/EXIF', wiederherstellen: 'Original zurück', rueckgaengig: 'Rückgängig' };
         inhalt.innerHTML = `<table class="vtab"><thead><tr><th>Zeit</th><th>Vorgang</th><th>Ablage</th><th>Benutzer</th><th>Dateien</th><th></th></tr></thead><tbody>
@@ -353,7 +353,7 @@ details summary { cursor: pointer; color: var(--akzent); margin: .8rem 0 .4rem; 
               <td><b>${this.esc(aktion[v.aktion] || v.aktion)}</b><br>${this.esc(v.text)}</td>
               <td>${v.quelle === 'seiten' ? 'Seiten' : 'Mediathek'}</td>
               <td>${this.esc(v.benutzer)}</td>
-              <td><details><summary>${v.anzahl} ${v.anzahl === 1 ? 'Datei' : 'Dateien'} · ${this.mb(v.groesse || 0)}</summary><div class="dateiliste">${v.dateien.map(d => `${this.esc(this._pfadAnzeige(d.datei))} <i>(${d.art})</i>`).join('<br>')}</div></details></td>
+              <td><details><summary>${v.anzahl} ${v.anzahl === 1 ? 'Datei' : 'Dateien'}${v.groesse ? ' · ' + this.mb(v.groesse) + ' gesichert' : ''}</summary><div class="dateiliste">${v.dateien.map(d => `${this.esc(this._pfadAnzeige(d.datei))} <i>(${d.art})</i>`).join('<br>')}</div></details></td>
               <td>${v.status === 'aktiv' ? `<button class="btn rueck" data-id="${this.esc(v.id)}">Rückgängig</button>` : '<span class="leise">rückgängig gemacht</span>'}</td>
             </tr>`).join('')}</tbody></table>`;
         inhalt.querySelectorAll('.rueck').forEach(b => b.addEventListener('click', () => this._rueckgaengig(b.dataset.id)));
