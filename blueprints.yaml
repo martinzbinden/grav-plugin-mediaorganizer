@@ -1,7 +1,7 @@
 name: Media Organizer
 slug: mediaorganizer
 type: plugin
-version: 1.1.0
+version: 1.2.0
 description: 'Datei-Browser für die Mediathek (user/media) im Admin2: Ordnerbaum, Galerie und Liste, Vorschau, Herunterladen einzeln oder als ZIP, Texte und EXIF (WebP/JPEG) bearbeiten, Bilder optimieren, wiederherstellen und automatisch in ein Standardformat (WebP, JPEG, AVIF) umwandeln.'
 icon: images
 author:
@@ -86,3 +86,17 @@ form:
       type: number
       label: 'Maximale Pixel (darüber: Original in _original, Arbeitsdatei verkleinert)'
       default: 25000000
+    verlauf_titel:
+      type: section
+      title: Verlauf und Sicherung
+      text: 'Vor jeder Änderung (Umwandeln, Optimieren, Umbenennen, Papierkorb, Texte, angepasste Seiten) werden die betroffenen Dateien gesichert. Im Medienarchiv unter «Verlauf» lässt sich jeder Vorgang rückgängig machen. Ablage: user/data/mediaorganizer/verlauf.'
+    verlauf.tage:
+      type: number
+      label: Sicherungen aufbewahren (Tage)
+      default: 60
+      validate: { min: 1 }
+    verlauf.max_mb:
+      type: number
+      label: Höchstens (MB, älteste werden zuerst entfernt)
+      default: 1000
+      validate: { min: 10 }

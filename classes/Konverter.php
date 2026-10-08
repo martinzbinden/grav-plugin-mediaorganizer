@@ -106,7 +106,7 @@ class Konverter
      * Eine Datei umwandeln. Ergebnis: ['status' => umgewandelt|unveraendert|fehler,
      * 'datei' => neuer absoluter Pfad, 'meldung' => …]
      */
-    public function datei(string $src): array
+    public function datei(string $src, ?Journal $journal = null): array
     {
         $dir = dirname($src);
         $file = basename($src);
@@ -161,9 +161,17 @@ class Konverter
         for ($i = 2; file_exists("$dir/$name"); $i++) {
             $name = "$base-$i.$endung";
         }
+        if ($journal) {
+            foreach ([$src, "$src.meta.yaml", "$dir/media_order.yaml", "$dir/$name", "$dir/$name.meta.yaml"] as $f) {
+                $journal->sichern($f);
+            }
+        }
         $px = imagesx($img) * imagesy($img);
         if ($px > $this->maxPixel) {
             @mkdir("$dir/_original", 0755);
+            if ($journal) {
+                $journal->sichern("$dir/_original/$name");
+            }
             $this->speichern($img, "$dir/_original/$name", $istPng);
             @chmod("$dir/_original/$name", 0644);
             $f = sqrt($this->maxPixel / $px);

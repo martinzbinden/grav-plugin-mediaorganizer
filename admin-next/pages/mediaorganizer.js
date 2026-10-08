@@ -48,6 +48,9 @@ class Mediaorganizer extends HTMLElement {
 
     connectedCallback() {
         try { Object.assign(this.#prefs, JSON.parse(localStorage.getItem(PREFS_KEY) || '{}')); } catch { /* egal */ }
+        // Ablage: medien (Mediathek), seiten (Seitenmedien) oder verlauf
+        const u = new URLSearchParams(location.search).get('ansicht');
+        this._quelle = ['medien', 'seiten', 'verlauf'].includes(u) ? u : 'medien';
         this.attachShadow({ mode: 'open' });
         this._shell();
         this.#observer = new IntersectionObserver(entries => {
@@ -58,12 +61,14 @@ class Mediaorganizer extends HTMLElement {
                 }
             }
         }, { root: this.$('.main'), rootMargin: '300px' });
-        this.#onPop = () => this._ordnerLaden(this._ordnerAusUrl(), false);
+        this.#onPop = () => {
+            const u = new URLSearchParams(location.search).get('ansicht') || 'medien';
+            if (u !== this._quelle) { this._quelle = u; this._ansichtZeigen(false); } else if (u !== 'verlauf') this._ordnerLaden(this._ordnerAusUrl(), false);
+        };
         window.addEventListener('popstate', this.#onPop);
         this.#onKey = ev => this._taste(ev);
         this.shadowRoot.addEventListener('keydown', this.#onKey);
-        this._baumLaden();
-        this._ordnerLaden(this._ordnerAusUrl(), false);
+        this._ansichtZeigen(false);
     }
 
     disconnectedCallback() {
@@ -96,6 +101,21 @@ class Mediaorganizer extends HTMLElement {
         return o === basis ? '' : (o.startsWith(`${basis}/`) ? o.slice(basis.length + 1) : o);
     }
     _prefsSpeichern() { try { localStorage.setItem(PREFS_KEY, JSON.stringify(this.#prefs)); } catch { /* egal */ } }
+    /** Meldung mit «Rückgängig» (eigener Toast, da mit Knopf) */
+    _toastRueck(msg, id, fehler = false) {
+        if (!id) return this._toast(msg, fehler);
+        const el = this.$('.toast');
+        el.innerHTML = '';
+        el.append(document.createTextNode(msg + ' '));
+        const b = document.createElement('button');
+        b.className = 'toastknopf'; b.textContent = 'Rückgängig';
+        b.addEventListener('click', () => { el.className = 'toast'; this._rueckgaengig(id); });
+        el.append(b);
+        el.className = `toast zeigen klickbar${fehler ? ' fehler' : ''}`;
+        clearTimeout(this._tt);
+        this._tt = setTimeout(() => { el.className = 'toast'; }, 9000);
+    }
+
     _toast(msg, fehler = false) {
         const t = window.__GRAV_TOAST;
         if (t) { fehler ? t.error(msg) : t.success(msg); return; }
@@ -106,9 +126,14 @@ class Mediaorganizer extends HTMLElement {
         this._tt = setTimeout(() => { el.className = 'toast'; }, 3500);
     }
 
-    async _api(method, path, { params = {}, body = null, blob = false } = {}) {
+    get _ablage() { return this._quelle === 'seiten' ? 'seiten' : 'medien'; }
+
+    async _api(method, path, { params = {}, body = null, blob = false, quelle = null } = {}) {
         const base = window.__GRAV_API_SERVER_URL || '';
         const prefix = window.__GRAV_API_PREFIX || '/api/v1';
+        const ablage = quelle || this._ablage;
+        if (method === 'GET') params = { quelle: ablage, ...params };
+        else if (body) body = { quelle: ablage, ...body };
         const q = new URLSearchParams(params).toString();
         const headers = { Accept: blob ? '*/*' : 'application/json' };
         if (window.__GRAV_API_TOKEN) headers['X-API-Token'] = window.__GRAV_API_TOKEN;
@@ -236,12 +261,26 @@ details summary { cursor: pointer; color: var(--akzent); margin: .8rem 0 .4rem; 
 .viewer .status { position: absolute; bottom: .6rem; left: 50%; transform: translateX(-50%); font-size: .75rem; background: rgba(0,0,0,.55); padding: .2rem .6rem; border-radius: .3rem; }
 .toast { position: fixed; bottom: 1rem; right: 1rem; background: #1f2937; color: #fff; padding: .55rem .9rem; border-radius: .45rem; opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 70; }
 .toast.zeigen { opacity: 1; } .toast.fehler { background: #b91c1c; }
+.toast.klickbar { pointer-events: auto; }
+.toastknopf { margin-left: .6rem; background: rgba(255,255,255,.2); border: 0; color: #fff; padding: .2rem .55rem; border-radius: .3rem; cursor: pointer; font-weight: 600; }
+.seg.tabs button { font-weight: 600; }
+.app.verlaufmodus .nurdateien, .app.verlaufmodus .baum, .app.verlaufmodus .detail,
+.app.verlaufmodus .bar label:has(.rek), .app.verlaufmodus .suche, .app.verlaufmodus .sort, .app.verlaufmodus .groesse, .app.verlaufmodus .alle { display: none !important; }
+.app.verlaufmodus .body { grid-template-columns: 1fr; }
+.kachel .vw { position: absolute; bottom: 2.6rem; right: .35rem; font-size: .62rem; padding: .05rem .3rem; border-radius: .25rem; background: #b45309; color: #fff; }
+.verweisliste { font-size: .74rem; margin: 0; padding-left: 1rem; }
+.verweisliste li { margin: .15rem 0; word-break: break-word; }
+.verweisliste code { font-size: .7rem; color: var(--leise); }
+.vtab td { white-space: normal; vertical-align: top; }
+.vtab .status-rueckgaengig { color: var(--leise); text-decoration: line-through; }
+.vtab .dateiliste { font-size: .72rem; color: var(--leise); }
 @media (max-width: 1100px) { .body { grid-template-columns: var(--baum, 220px) 1fr; } .detail { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--rand); max-height: 45vh; } }
 </style>
 <div class="app">
   <div class="bar">
     <h1 class="seitentitel">Medienarchiv</h1>
-    <span class="seg"><button data-view="galerie">Galerie</button><button data-view="liste">Liste</button></span>
+    <span class="seg tabs"><button data-quelle="medien" title="Mediathek (user/media)">Mediathek</button><button data-quelle="seiten" title="Dateien in den Seitenordnern (user/pages)">Seitenmedien</button><button data-quelle="verlauf" title="Alle Änderungen mit Sicherung, rückgängig machen">Verlauf</button></span>
+    <span class="seg nurdateien"><button data-view="galerie">Galerie</button><button data-view="liste">Liste</button></span>
     <label title="Dateien aus allen Unterordnern mit anzeigen"><input type="checkbox" class="rek"> inkl. Unterordner</label>
     <input type="search" class="suche" placeholder="Suchen (Name, Titel, Typ, Autor)">
     <select class="sort" title="Sortierung">
@@ -260,6 +299,7 @@ details summary { cursor: pointer; color: var(--akzent); margin: .8rem 0 .4rem; 
 </div>
 <div class="toast"></div>`;
         this.$$('[data-view]').forEach(b => b.addEventListener('click', () => { this.#prefs.view = b.dataset.view; this._prefsSpeichern(); this._mitteZeichnen(); }));
+        this.$$('[data-quelle]').forEach(b => b.addEventListener('click', () => { if (b.dataset.quelle !== this._quelle) { this._quelle = b.dataset.quelle; this._ansichtZeigen(true); } }));
         const rek = this.$('.rek');
         rek.checked = this.#prefs.rekursiv;
         rek.addEventListener('change', () => { this.#prefs.rekursiv = rek.checked; this._prefsSpeichern(); this._ordnerLaden(this._ordner, false); });
@@ -274,6 +314,67 @@ details summary { cursor: pointer; color: var(--akzent); margin: .8rem 0 .4rem; 
         gr.addEventListener('input', () => { this.#prefs.size = +gr.value; this.style.setProperty('--gr', `${gr.value}px`); this._prefsSpeichern(); });
         this.$('.alle').addEventListener('click', () => this._alleWaehlen());
         this.$('.baumknopf').addEventListener('click', () => { this.#prefs.treeZu = !this.#prefs.treeZu; this._prefsSpeichern(); this._baumZeichnen(); });
+    }
+
+    /* ---------- Ablage / Verlauf ---------- */
+
+    _ansichtZeigen(push) {
+        this.$$('[data-quelle]').forEach(b => b.classList.toggle('an', b.dataset.quelle === this._quelle));
+        this.$('.app').classList.toggle('verlaufmodus', this._quelle === 'verlauf');
+        if (push) {
+            const url = new URL(location.href);
+            url.searchParams.delete('ordner');
+            this._quelle === 'medien' ? url.searchParams.delete('ansicht') : url.searchParams.set('ansicht', this._quelle);
+            history.pushState({}, '', url);
+        }
+        this.#sel.clear();
+        this.#items = [];
+        this.#thumbs.clear();
+        if (this._quelle === 'verlauf') return this._verlaufLaden();
+        this.#tree = null;
+        this.#prefs.offen = [''];
+        this._baumLaden();
+        this._ordnerLaden(push ? '' : this._ordnerAusUrl(), false);
+    }
+
+    async _verlaufLaden() {
+        this.$('.pfad').innerHTML = '<span class="leise">Verlauf: alle Änderungen, jeweils mit Sicherung der betroffenen Dateien</span>';
+        this.$('.anzahl').textContent = '';
+        const inhalt = this.$('.inhalt');
+        inhalt.innerHTML = '<p class="leer">Wird geladen…</p>';
+        let l;
+        try { l = await this._api('GET', '/verlauf'); } catch (e) { inhalt.innerHTML = `<p class="leer">${this.esc(e.message)}</p>`; return; }
+        this.$('.anzahl').textContent = `${l.length} Vorgänge`;
+        if (!l.length) { inhalt.innerHTML = '<p class="leer">Noch keine Änderungen.</p>'; return; }
+        const aktion = { konvertieren: 'Umgewandelt', automatisch: 'Automatisch umgewandelt', optimieren: 'Optimiert', umbenennen: 'Umbenannt', papierkorb: 'Papierkorb', kopieren: 'Kopiert', texte: 'Texte/EXIF', wiederherstellen: 'Original zurück', rueckgaengig: 'Rückgängig' };
+        inhalt.innerHTML = `<table class="vtab"><thead><tr><th>Zeit</th><th>Vorgang</th><th>Ablage</th><th>Benutzer</th><th>Dateien</th><th></th></tr></thead><tbody>
+            ${l.map(v => `<tr class="${v.status === 'rueckgaengig' ? 'status-rueckgaengig' : ''}">
+              <td>${this.unixDatum(v.zeit)}</td>
+              <td><b>${this.esc(aktion[v.aktion] || v.aktion)}</b><br>${this.esc(v.text)}</td>
+              <td>${v.quelle === 'seiten' ? 'Seiten' : 'Mediathek'}</td>
+              <td>${this.esc(v.benutzer)}</td>
+              <td><details><summary>${v.anzahl} ${v.anzahl === 1 ? 'Datei' : 'Dateien'} · ${this.mb(v.groesse || 0)}</summary><div class="dateiliste">${v.dateien.map(d => `${this.esc(this._pfadAnzeige(d.datei))} <i>(${d.art})</i>`).join('<br>')}</div></details></td>
+              <td>${v.status === 'aktiv' ? `<button class="btn rueck" data-id="${this.esc(v.id)}">Rückgängig</button>` : '<span class="leise">rückgängig gemacht</span>'}</td>
+            </tr>`).join('')}</tbody></table>`;
+        inhalt.querySelectorAll('.rueck').forEach(b => b.addEventListener('click', () => this._rueckgaengig(b.dataset.id)));
+    }
+
+    // «medien:a/b.jpg» → «Mediathek/a/b.jpg», «user:pages/…» → «Seiten/…»
+    _pfadAnzeige(p) {
+        return String(p).replace(/^medien:/, 'Mediathek/').replace(/^user:pages\//, 'Seiten/').replace(/^user:/, 'user/');
+    }
+
+    async _rueckgaengig(id, erzwingen = false) {
+        try {
+            const r = await this._api('POST', '/rueckgaengig', { body: { id, erzwingen } });
+            if (!r.ok) {
+                if (confirm(`Diese Dateien wurden seither erneut geändert:\n\n${r.konflikte.map(p => this._pfadAnzeige(p)).join('\n')}\n\nTrotzdem rückgängig machen? Die späteren Änderungen an diesen Dateien gehen dann verloren (sie werden aber ebenfalls gesichert).`)) return this._rueckgaengig(id, true);
+                return;
+            }
+            this._toastRueck('Rückgängig gemacht.', r.id);
+        } catch (e) { this._toast(e.message, true); }
+        if (this._quelle === 'verlauf') this._verlaufLaden();
+        else { this._baumLaden(); this._neuLaden([]); }
     }
 
     /* ---------- Ordnerbaum ---------- */
@@ -299,7 +400,7 @@ details summary { cursor: pointer; color: var(--akzent); margin: .8rem 0 .4rem; 
             const auf = offen.has(k.path);
             let h = `<div class="knoten${k.path === this._ordner ? ' an' : ''}" data-pfad="${this.esc(k.path)}" style="padding-left:${tiefe * .9 + .2}rem">
                 <span class="pf" data-auf="${this.esc(k.path)}">${hatKinder ? (auf ? '▾' : '▸') : ''}</span>
-                <span class="name">${this.esc(k.name)}</span><span class="n">${k.total}</span></div>`;
+                <span class="name" title="${this.esc(k.ordner || k.name)}">${this.esc(k.name)}</span><span class="n">${k.total}</span></div>`;
             if (hatKinder && auf) h += k.kinder.map(c => zeile(c, tiefe + 1)).join('');
             return h;
         };
@@ -334,7 +435,7 @@ details summary { cursor: pointer; color: var(--akzent); margin: .8rem 0 .4rem; 
         this._pfadZeichnen();
         this.$('.inhalt').innerHTML = '<p class="leer">Wird geladen…</p>';
         try {
-            this.#items = await this._api('GET', '/dateien', { params: { ordner, rekursiv: this.#prefs.rekursiv ? 1 : '' } });
+            this.#items = await this._api('GET', '/dateien', { params: { ordner, rekursiv: this.#prefs.rekursiv ? 1 : '', verweise: 1 } });
         } catch (e) {
             this.#items = [];
             this.$('.inhalt').innerHTML = `<p class="leer">${this.esc(e.message)}</p>`;
@@ -391,7 +492,7 @@ details summary { cursor: pointer; color: var(--akzent); margin: .8rem 0 .4rem; 
             inhalt.innerHTML = `<div class="raster">${l.map((i, n) => `
                 <div class="kachel${this.#sel.has(i.path) ? ' sel' : ''}" data-i="${n}" title="${this.esc(i.path)}">
                   ${this._vorschauHtml(i, 360, 1)}
-                  <span class="haken">✓</span>${i.backup ? '<span class="bk">optimiert</span>' : ''}
+                  <span class="haken">✓</span>${i.backup ? '<span class="bk">optimiert</span>' : ''}${i.verweise === 0 ? '<span class="vw" title="Kein direkter Verweis in Seiten oder Konfiguration gefunden">kein Verweis</span>' : ''}
                   <div class="cap">${this.esc(i.title || i.file)}<small>${this.esc(this.#prefs.rekursiv && i.ordner !== this._ordner ? this.relOrdner(i.ordner) : (this.exifDatum(i.exif?.datetime) || this.unixDatum(i.mtime)))}</small></div>
                 </div>`).join('')}</div>`;
         } else {
@@ -581,7 +682,9 @@ details summary { cursor: pointer; color: var(--akzent); margin: .8rem 0 .4rem; 
               <button class="btn opt">Optimieren…</button>
               ${this._konvOk(i) ? `<button class="btn konv">In ${this._konv.ziel.toUpperCase()} umwandeln</button>` : ''}
               ${i.backup ? '<button class="btn warn rest">Original wiederherstellen</button>' : ''}
+              ${this._orgKnoepfe()}
             </div>
+            ${this._verweisAbschnitt()}
             ${i.backup ? '<p class="hinweis">Das Original vor der Optimierung liegt gesichert im Unterordner _original.</p>' : ''}`;
         const img = d.querySelector('.gross');
         const setze = url => { img.src = url; };
@@ -614,6 +717,7 @@ details summary { cursor: pointer; color: var(--akzent); margin: .8rem 0 .4rem; 
         d.querySelector('.dl').addEventListener('click', ev => this._herunterladen(i, ev.target));
         d.querySelector('.opt').addEventListener('click', () => this._optimierenDialog([i]));
         d.querySelector('.konv')?.addEventListener('click', ev => this._konvertieren([i], ev.target));
+        this._orgBinden(d, [i]);
         d.querySelector('.rest')?.addEventListener('click', () => this._wiederherstellen([i]));
     }
 
@@ -630,7 +734,8 @@ details summary { cursor: pointer; color: var(--akzent); margin: .8rem 0 .4rem; 
             ${META_FELDER.map(([k, t]) => `<div class="feld einzeln"><label for="f-${k}">${t}</label>${k === 'caption' ? `<textarea id="f-${k}" data-f="${k}">${this.esc(i[k] || '')}</textarea>` : `<input type="text" id="f-${k}" data-f="${k}" value="${this.esc(i[k] || '')}">`}</div>`).join('')}
             <div class="knoepfe"><button class="btn voll speichern" disabled>Speichern</button></div>
             <h3>Aktionen</h3>
-            <div class="knoepfe"><button class="btn dl">Herunterladen</button>${i.typ === 'pdf' || i.typ === 'svg' ? '<button class="btn oeffnen">Im Browser öffnen</button>' : ''}</div>`;
+            <div class="knoepfe"><button class="btn dl">Herunterladen</button>${i.typ === 'pdf' || i.typ === 'svg' ? '<button class="btn oeffnen">Im Browser öffnen</button>' : ''}${this._orgKnoepfe()}</div>
+            ${this._verweisAbschnitt()}`;
         if (i.typ === 'svg') {
             const img = d.querySelector('.gross');
             const key = `svg|${i.path}`;
@@ -649,6 +754,7 @@ details summary { cursor: pointer; color: var(--akzent); margin: .8rem 0 .4rem; 
             await this._metaSpeichern([i.path], felder, knopf);
         });
         d.querySelector('.dl').addEventListener('click', ev => this._herunterladen(i, ev.target));
+        this._orgBinden(d, [i]);
         d.querySelector('.oeffnen')?.addEventListener('click', async ev => {
             ev.target.disabled = true;
             try {
@@ -685,6 +791,7 @@ details summary { cursor: pointer; color: var(--akzent); margin: .8rem 0 .4rem; 
               <button class="btn mzip">Als ZIP herunterladen</button>
               ${bilder.length ? `<button class="btn mopt">${bilder.length === g.length ? '' : `${bilder.length} Bilder `}Optimieren…</button>` : ''}
               ${g.some(i => this._konvOk(i)) ? `<button class="btn mkonv">${g.filter(i => this._konvOk(i)).length} in ${this._konv.ziel.toUpperCase()} umwandeln</button>` : ''}
+              ${this._orgKnoepfe(true)}
               ${mitBackup.length ? `<button class="btn warn mrest">${mitBackup.length} Originale wiederherstellen</button>` : ''}
             </div>`;
         const knopf = d.querySelector('.mspeichern');
@@ -701,6 +808,7 @@ details summary { cursor: pointer; color: var(--akzent); margin: .8rem 0 .4rem; 
         d.querySelector('.mzip').addEventListener('click', ev => this._zip(g.map(i => i.path), ev.target));
         d.querySelector('.mopt')?.addEventListener('click', () => this._optimierenDialog(bilder));
         d.querySelector('.mkonv')?.addEventListener('click', ev => this._konvertieren(g.filter(i => this._konvOk(i)), ev.target));
+        this._orgBinden(d, g);
         d.querySelector('.mrest')?.addEventListener('click', () => this._wiederherstellen(mitBackup));
     }
 
@@ -710,7 +818,7 @@ details summary { cursor: pointer; color: var(--akzent); margin: .8rem 0 .4rem; 
         // Einträge neu holen (Eigenschaften/EXIF), Auswahl behalten
         const auswahl = new Set(this.#sel);
         try {
-            this.#items = await this._api('GET', '/dateien', { params: { ordner: this._ordner, rekursiv: this.#prefs.rekursiv ? 1 : '' } });
+            this.#items = await this._api('GET', '/dateien', { params: { ordner: this._ordner, rekursiv: this.#prefs.rekursiv ? 1 : '', verweise: 1 } });
         } catch { /* behalten */ }
         for (const p of pfade || []) for (const k of [...this.#thumbs.keys()]) if (k.startsWith(`${p}|`)) this.#thumbs.delete(k);
         this.#sel = new Set([...auswahl].filter(p => this.#items.some(i => i.path === p)));
@@ -724,8 +832,8 @@ details summary { cursor: pointer; color: var(--akzent); margin: .8rem 0 .4rem; 
         knopf.textContent = 'Speichert…';
         try {
             const r = await this._api('POST', '/meta', { body: { pfade, felder } });
-            if (r.fehler?.length) this._toast(`${r.geaendert} gespeichert, Fehler: ${r.fehler.join('; ')}`, true);
-            else this._toast(`${r.geaendert} ${r.geaendert === 1 ? 'Datei' : 'Dateien'} gespeichert`);
+            if (r.fehler?.length) this._toastRueck(`${r.geaendert} gespeichert, Fehler: ${r.fehler.join('; ')}`, r.vorgang, true);
+            else this._toastRueck(`${r.geaendert} ${r.geaendert === 1 ? 'Datei' : 'Dateien'} gespeichert.`, r.vorgang);
             await this._neuLaden([]);
         } catch (e) {
             this._toast(e.message, true);
@@ -765,7 +873,7 @@ details summary { cursor: pointer; color: var(--akzent); margin: .8rem 0 .4rem; 
             <h3>${g.length === 1 ? 'Bild' : `${g.length} Bilder`} optimieren</h3>
             <label>Längste Kante max.<select class="max">${[2000, 2400, 3000, 4000, 6000].map(v => `<option value="${v}" ${v === 3000 ? 'selected' : ''}>${v} px</option>`).join('')}</select></label>
             <label>Qualität<select class="q">${[75, 80, 85, 90].map(v => `<option value="${v}" ${v === 85 ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
-            <p class="hinweis">Grösste Kante in der Auswahl: ${groesste} px. Kleinere Bilder werden nur neu komprimiert. Ohne Ersparnis bleibt ein Bild unverändert. Das Original wird beim ersten Optimieren in _original gesichert und kann wiederhergestellt werden. Auf der Website erscheinen die neuen Kopien automatisch.</p>
+            <p class="hinweis">Grösste Kante in der Auswahl: ${groesste} px. Kleinere Bilder werden nur neu komprimiert. Ohne Ersparnis bleibt ein Bild unverändert. Die bisherige Fassung wird gesichert (Verlauf)${this._quelle === 'medien' ? ', das erste Original zusätzlich in _original' : ''} und kann zurückgeholt werden. Auf der Website erscheinen die neuen Kopien automatisch.</p>
             <div class="knoepfe" style="justify-content:flex-end"><button class="btn abbr">Abbrechen</button><button class="btn voll los">Optimieren</button></div></div>`;
         this.shadowRoot.appendChild(dlg);
         dlg.querySelector('.abbr').addEventListener('click', () => dlg.remove());
@@ -774,7 +882,7 @@ details summary { cursor: pointer; color: var(--akzent); margin: .8rem 0 .4rem; 
             const max = +dlg.querySelector('.max').value, qualitaet = +dlg.querySelector('.q').value;
             ev.target.disabled = true;
             const pfade = g.map(i => i.path);
-            let vorher = 0, nachher = 0, opt = 0, gleich = 0;
+            let vorher = 0, nachher = 0, opt = 0, gleich = 0, vorgang = null;
             const fehler = [];
             // in Paketen, damit der Server nicht zu lange rechnet
             for (let k = 0; k < pfade.length; k += 5) {
@@ -782,6 +890,7 @@ details summary { cursor: pointer; color: var(--akzent); margin: .8rem 0 .4rem; 
                 try {
                     const r = await this._api('POST', '/optimieren', { body: { pfade: pfade.slice(k, k + 5), max, qualitaet } });
                     for (const e of r) {
+                        if (e.vorgang) vorgang = e.vorgang;
                         if (e.status === 'optimiert') { opt++; vorher += e.vorher; nachher += e.nachher; }
                         else if (e.status === 'unveraendert') gleich++;
                         else fehler.push(`${e.path}: ${e.meldung}`);
@@ -789,11 +898,78 @@ details summary { cursor: pointer; color: var(--akzent); margin: .8rem 0 .4rem; 
                 } catch (e2) { fehler.push(e2.message); }
             }
             dlg.remove();
-            this._toast(fehler.length
+            const meldung = fehler.length
                 ? `${opt} optimiert, ${fehler.length} Fehler: ${fehler.slice(0, 3).join('; ')}`
-                : `${opt} optimiert (${this.mb(vorher)} → ${this.mb(nachher)})${gleich ? `, ${gleich} ohne Ersparnis unverändert` : ''}`, fehler.length > 0);
+                : `${opt} optimiert (${this.mb(vorher)} → ${this.mb(nachher)})${gleich ? `, ${gleich} ohne Ersparnis unverändert` : ''}`;
+            // bei mehr als 5 Bildern mehrere Vorgaenge: Rueckgaengig dann im Verlauf
+            if (pfade.length <= 5) this._toastRueck(meldung, opt ? vorgang : null, fehler.length > 0);
+            else this._toast(`${meldung}. Rückgängig im Verlauf.`, fehler.length > 0);
             await this._neuLaden(pfade);
         });
+    }
+
+    /* ---------- Organisieren ---------- */
+
+    _orgKnoepfe(mehrere = false) {
+        return `${mehrere ? '' : '<button class="btn umben">Umbenennen…</button>'}
+            ${this._quelle === 'seiten' ? '<button class="btn kopie">In Mediathek kopieren…</button>' : ''}
+            <button class="btn warn papier">In den Papierkorb</button>`;
+    }
+
+    _verweisAbschnitt() {
+        return '<h3>Verwendet in</h3><div class="verweise leise">Wird gesucht…</div>';
+    }
+
+    _orgBinden(d, g) {
+        d.querySelector('.umben')?.addEventListener('click', () => this._umbenennen(g[0]));
+        d.querySelector('.kopie')?.addEventListener('click', ev => this._kopieren(g, ev.target));
+        d.querySelector('.papier')?.addEventListener('click', ev => this._papierkorb(g, ev.target));
+        const box = d.querySelector('.verweise');
+        if (box && g.length === 1) {
+            this._api('GET', '/verweise', { params: { pfad: g[0].path } }).then(l => {
+                if (!box.isConnected) return;
+                box.innerHTML = l.length
+                    ? `<ul class="verweisliste">${l.map(t => `<li>${this.esc(t.datei)}<code> Zeile ${t.zeile}</code><br><code>${this.esc(t.text)}</code></li>`).join('')}</ul>`
+                    : 'Kein direkter Verweis in Seiten oder Konfiguration gefunden. Vorsicht: Galerien, Vorlagen oder Sammlungen (z.B. «alle Bilder einer Seite») werden nicht erkannt.';
+            }).catch(e => { box.textContent = e.message; });
+        }
+    }
+
+    async _umbenennen(i) {
+        const name = prompt(`Neuer Dateiname für «${i.file}» (die Endung bleibt). Verweise in Seiten und Konfiguration werden angepasst.`, i.file);
+        if (!name || name === i.file) return;
+        try {
+            const r = await this._api('POST', '/umbenennen', { body: { pfad: i.path, name } });
+            this._toastRueck(`Umbenannt${r.verweise ? `, ${r.verweise} Verweis${r.verweise === 1 ? '' : 'e'} angepasst` : ''}.`, r.vorgang);
+            this.#sel = new Set([r.neu]);
+            await this._baumLaden();
+            await this._neuLaden([i.path]);
+        } catch (e) { this._toast(e.message, true); }
+    }
+
+    async _papierkorb(g, knopf) {
+        const ohne = g.filter(i => i.verweise > 0).length;
+        if (!confirm(`${g.length === 1 ? `«${g[0].file}»` : `${g.length} Dateien`} in den Papierkorb legen?${ohne ? `\n\nAchtung: ${ohne === 1 ? 'Diese Datei wird' : `${ohne} davon werden`} in Seiten oder der Konfiguration verwendet.` : ''}\n\nDie Dateien werden gesichert und lassen sich im Verlauf zurückholen.`)) return;
+        knopf.disabled = true;
+        try {
+            const r = await this._api('POST', '/papierkorb', { body: { pfade: g.map(i => i.path) } });
+            this._toastRueck(`${r.entfernt} in den Papierkorb gelegt${r.fehler.length ? `, Fehler: ${r.fehler.join('; ')}` : ''}.`, r.vorgang, r.fehler.length > 0);
+            this.#sel.clear();
+            await this._baumLaden();
+            await this._neuLaden([]);
+        } catch (e) { this._toast(e.message, true); knopf.disabled = false; }
+    }
+
+    async _kopieren(g, knopf) {
+        const vorschlag = `seitenmedien/${(g[0].ordner || 'seiten').split('/').pop().replace(/^\d+\./, '')}`;
+        const ziel = prompt(`Zielordner in der Mediathek für ${g.length === 1 ? `«${g[0].file}»` : `${g.length} Dateien`} (wird angelegt, Originale bleiben bei der Seite):`, vorschlag);
+        if (!ziel) return;
+        knopf.disabled = true;
+        try {
+            const r = await this._api('POST', '/kopieren', { body: { pfade: g.map(i => i.path), ziel } });
+            this._toastRueck(`${r.kopiert} in die Mediathek kopiert (${r.ziel})${r.fehler.length ? `, Fehler: ${r.fehler.join('; ')}` : ''}.`, r.vorgang, r.fehler.length > 0);
+        } catch (e) { this._toast(e.message, true); }
+        knopf.disabled = false;
     }
 
     async _konvertieren(g, knopf) {
@@ -801,23 +977,24 @@ details summary { cursor: pointer; color: var(--akzent); margin: .8rem 0 .4rem; 
         if (!confirm(`${g.length === 1 ? 'Dieses Bild' : `${g.length} Bilder`} in ${ziel} umwandeln? Die bisherige Datei wird ersetzt (Titel und Texte gehen mit). Seiten, die direkt auf den alten Dateinamen verweisen, müssen angepasst werden.`)) return;
         knopf.disabled = true;
         const pfade = g.map(i => i.path);
-        let ok = 0;
+        let ok = 0, vorgang = null, vw = 0;
         const fehler = [], gleich = [];
         for (let k = 0; k < pfade.length; k += 5) {
             knopf.textContent = `Läuft… ${Math.min(k + 5, pfade.length)}/${pfade.length}`;
             try {
                 const r = await this._api('POST', '/konvertieren', { body: { pfade: pfade.slice(k, k + 5) } });
                 for (const e of r) {
+                    vorgang = vorgang || e.vorgang; vw += e.verweise || 0;
                     if (e.status === 'umgewandelt') ok++;
                     else if (e.status === 'unveraendert') gleich.push(`${e.path.split('/').pop()}: ${e.meldung}`);
                     else fehler.push(`${e.path}: ${e.meldung}`);
                 }
             } catch (e2) { fehler.push(e2.message); }
         }
-        const teile = [`${ok} in ${ziel} umgewandelt`];
+        const teile = [`${ok} in ${ziel} umgewandelt${vw ? ` (${vw} Verweis${vw === 1 ? '' : 'e'} angepasst)` : ''}`];
         if (gleich.length) teile.push(`${gleich.length} unverändert (${gleich.slice(0, 2).join('; ')})`);
         if (fehler.length) teile.push(`Fehler: ${fehler.slice(0, 3).join('; ')}`);
-        this._toast(teile.join(', '), fehler.length > 0 || (ok === 0 && gleich.length > 0));
+        this._toastRueck(teile.join(', '), ok ? vorgang : null, fehler.length > 0 || (ok === 0 && gleich.length > 0));
         this.#sel.clear();
         await this._baumLaden();
         await this._neuLaden(pfade);

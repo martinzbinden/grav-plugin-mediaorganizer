@@ -20,3 +20,7 @@ konvertierung:
   png_verlustfrei: true
   # Groessere Bilder: Original unter _original/, Arbeitsdatei verkleinert
   max_pixel: 25000000
+# Verlauf: Sicherungen fuer Rueckgaengig (user/data/mediaorganizer/verlauf)
+verlauf:
+  tage: 60
+  max_mb: 1000

@@ -6,7 +6,9 @@ einzeln, als Ordner-ZIP oder als ZIP einer Auswahl. Dazu Texte (Titel,
 Alt-Text, Beschriftung in `<datei>.meta.yaml`) und – bei Bildern – EXIF
 bearbeiten (WebP und JPEG, verlustfrei), Bilder optimieren (verkleinern/neu
 komprimieren, Original in `_original/`), wiederherstellen und in ein
-Standardformat umwandeln.
+Standardformat umwandeln. Auch die Bilder und Dateien in den **Seitenordnern**
+lassen sich zentral sichten, umwandeln, umbenennen und aufräumen – mit
+**Verlauf und Rückgängig**.
 
 - **Alle Dateitypen** werden gelistet und lassen sich herunterladen
   (PDF, SVG, Office, ZIP …). SVG mit Vorschau, PDF und SVG auch im Browser
@@ -42,6 +44,39 @@ konvertierung:
   png_verlustfrei: true
 ```
 
+## Seitenmedien
+
+Reiter «Seitenmedien»: alle Seitenordner mit Dateien (mit Seitentitel), dieselbe
+Galerie/Liste wie in der Mediathek. Zusätzlich:
+
+- **Verweise:** zu jeder Datei «Verwendet in» (Seiten-Markdown, Kopfbereich
+  wie `hero.image`/`media_order`, Konfiguration); Kachel-Hinweis «kein
+  Verweis». Erkannt werden der blosse Dateiname im eigenen Seitenordner,
+  `user/pages/…`, die Seitenroute und bei der Mediathek `media://…`,
+  `user://media/…`, `user/media/…` (auch URL-kodiert). Twig-Vorlagen und
+  Sammlungen werden nicht erkannt.
+- **Umwandeln/Optimieren/Umbenennen:** ändert sich der Dateiname, werden die
+  Verweise in den Seiten mitgeführt.
+- **In die Mediathek kopieren**, **In den Papierkorb**.
+- Rechte: Ansehen `api.pages.read`, Ändern `api.pages.write`.
+
+## Verlauf und Rückgängig
+
+Jede Änderung (Texte/EXIF, Umwandeln, Optimieren, Umbenennen, Kopieren,
+Papierkorb, angepasste Seiten) ist ein Vorgang im Reiter «Verlauf». Vorher
+werden alle betroffenen Dateien gesichert (`user/data/mediaorganizer/verlauf`,
+per `.htaccess` gesperrt). «Rückgängig» stellt den Zustand davor wieder her,
+auch direkt aus der Meldung nach einer Aktion. Wurde eine Datei seither erneut
+geändert, wird nachgefragt (die spätere Fassung wird ebenfalls gesichert).
+Rückgängig ist selbst ein Vorgang und lässt sich wieder aufheben.
+Aufräumen nach Alter und Gesamtgrösse:
+
+```yaml
+verlauf:
+  tage: 60        # aeltere Vorgaenge entfernen
+  max_mb: 1000    # danach die aeltesten, bis die Sicherungen darunter liegen
+```
+
 ## Voraussetzungen
 
 Grav 2 mit den Plugins `api` und `admin2`; PHP mit GD (Optimieren) und
@@ -67,7 +102,10 @@ ZipArchive (ZIP-Downloads).
 `vorschau?pfad=&w=&crop=1`, `exif?pfad=`, `datei?pfad=`,
 `zip?ordner=` bzw. `POST zip {pfade}`, `POST meta {pfade, felder}`,
 `POST optimieren {pfade, max, qualitaet}`, `POST konvertieren {pfade}`,
-`POST wiederherstellen {pfade}`.
+`POST wiederherstellen {pfade}`, `verweise?pfad=`,
+`POST umbenennen {pfad, name}`, `POST kopieren {pfade, ziel}`,
+`POST papierkorb {pfade}`, `verlauf`, `POST rueckgaengig {id, erzwingen}`.
+Alle Dateiaufrufe nehmen `quelle=medien|seiten` (Standard `medien`).
 
 ## Lizenz
 
