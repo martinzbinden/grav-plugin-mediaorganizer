@@ -36,7 +36,7 @@ class Mediaorganizer extends HTMLElement {
     #sel = new Set();
     #anchor = null;
     #focus = null;
-    #prefs = { view: 'galerie', rekursiv: true, sort: 'aufnahme', dir: 'desc', size: 170, treeZu: false, offen: [] };
+    #prefs = { view: 'galerie', rekursiv: true, sort: 'aufnahme', dir: 'desc', size: 170, baum: true, details: true, offen: [] };
     #filter = '';
     #thumbs = new Map();
     #queue = [];
@@ -48,6 +48,7 @@ class Mediaorganizer extends HTMLElement {
 
     connectedCallback() {
         try { Object.assign(this.#prefs, JSON.parse(localStorage.getItem(PREFS_KEY) || '{}')); } catch { /* egal */ }
+        if ('treeZu' in this.#prefs) { this.#prefs.baum = !this.#prefs.treeZu; delete this.#prefs.treeZu; }
         // Ablage: medien (Mediathek), seiten (Seitenmedien) oder verlauf
         const u = new URLSearchParams(location.search).get('ansicht');
         this._quelle = ['medien', 'seiten', 'verlauf'].includes(u) ? u : 'medien';
@@ -68,10 +69,17 @@ class Mediaorganizer extends HTMLElement {
         window.addEventListener('popstate', this.#onPop);
         this.#onKey = ev => this._taste(ev);
         this.shadowRoot.addEventListener('keydown', this.#onKey);
+        // Schmal = Plugin-Bereich ≤ 900 px (Handy, Tablet hochkant, schmales Admin-Fenster)
+        this._ro = new ResizeObserver(() => {
+            const schmal = this.$('.app').clientWidth <= 900;
+            if (schmal !== this._schmal) { this._schmal = schmal; this._baumOffen = this._detailOffen = false; this._layout(); }
+        });
+        this._ro.observe(this.$('.app'));
         this._ansichtZeigen(false);
     }
 
     disconnectedCallback() {
+        this._ro?.disconnect();
         window.removeEventListener('popstate', this.#onPop);
         this.#observer?.disconnect();
         this._viewerZu();
@@ -166,10 +174,10 @@ class Mediaorganizer extends HTMLElement {
     _shell() {
         this.shadowRoot.innerHTML = `
 <style>
-:host { display:block; height: calc(100vh - 4rem); min-height: 520px; color: var(--foreground, inherit); font-size: .8125rem; --rand: var(--border, rgba(127,127,127,.28)); --leise: var(--muted-foreground, #6b7280); --akzent: var(--primary, #1a926e); --flaeche: var(--muted, rgba(127,127,127,.08)); }
+:host { display:block; height: calc(100vh - 4rem); height: calc(100dvh - 4rem); min-height: 520px; color: var(--foreground, inherit); font-size: .8125rem; --rand: var(--border, rgba(127,127,127,.28)); --leise: var(--muted-foreground, #6b7280); --akzent: var(--primary, #1a926e); --flaeche: var(--muted, rgba(127,127,127,.08)); }
 * { box-sizing: border-box; }
 button, input, select, textarea { font: inherit; color: inherit; }
-.app { display: grid; grid-template-rows: auto 1fr; height: 100%; }
+.app { display: grid; grid-template-rows: auto 1fr; height: 100%; container: mo / inline-size; }
 .bar { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; padding: .6rem .9rem; border-bottom: 1px solid var(--rand); }
 .bar h1 { font-size: 1rem; font-weight: 700; margin: 0 .5rem 0 0; }
 .bar .rechts { margin-left: auto; display: flex; gap: .5rem; align-items: center; }
@@ -180,11 +188,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .bar select { padding: .28rem .4rem; border: 1px solid var(--rand); border-radius: .4rem; background: transparent; }
 .bar label { display: inline-flex; gap: .3rem; align-items: center; cursor: pointer; }
 .leise { color: var(--leise); }
-.body { display: grid; grid-template-columns: var(--baum, 240px) 1fr 360px; min-height: 0; }
-.body.baumzu { --baum: 34px; }
+.body { display: grid; grid-template-columns: var(--bw, 240px) minmax(0, 1fr) var(--dw, 360px); min-height: 0; position: relative; }
+.body > .baum { grid-column: 1; grid-row: 1; } .body > .main { grid-column: 2; grid-row: 1; } .body > .detail { grid-column: 3; grid-row: 1; }
 .baum { border-right: 1px solid var(--rand); overflow: auto; padding: .4rem 0; min-height: 0; }
 .baumkopf { display: flex; justify-content: space-between; align-items: center; padding: 0 .5rem .3rem .7rem; }
-.baumzu .baum .knoten, .baumzu .baum .titel { display: none; }
 .knoten { display: flex; align-items: center; gap: .15rem; padding: .18rem .5rem .18rem 0; cursor: pointer; white-space: nowrap; border-radius: .3rem; margin: 0 .3rem; }
 .knoten:hover { background: var(--flaeche); }
 .knoten.an { background: color-mix(in srgb, var(--akzent) 16%, transparent); color: var(--akzent); font-weight: 600; }
@@ -259,6 +266,14 @@ details summary { cursor: pointer; color: var(--akzent); margin: .8rem 0 .4rem; 
 .viewer .nav { position: absolute; top: 50%; transform: translateY(-50%); font-size: 1.6rem; padding: .6rem .8rem; }
 .viewer .nav.l { left: .6rem; } .viewer .nav.r { right: .6rem; }
 .viewer .status { position: absolute; bottom: .6rem; left: 50%; transform: translateX(-50%); font-size: .75rem; background: rgba(0,0,0,.55); padding: .2rem .6rem; border-radius: .3rem; }
+.umschalt { display: inline-flex; align-items: center; gap: .3rem; border: 1px solid var(--rand); background: transparent; border-radius: .4rem; padding: .28rem .5rem; cursor: pointer; color: var(--leise); }
+.umschalt svg { width: 1rem; height: 1rem; }
+.umschalt.an { color: var(--akzent); border-color: var(--akzent); background: color-mix(in srgb, var(--akzent) 10%, transparent); }
+.umschalt .kbd { font-size: .65rem; opacity: .7; }
+.nurschmal { display: none !important; }
+.detailkopf { display: none; }
+.schleier { display: none; }
+.viewer { touch-action: none; }
 .toast { position: fixed; bottom: 1rem; right: 1rem; background: #1f2937; color: #fff; padding: .55rem .9rem; border-radius: .45rem; opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 70; }
 .toast.zeigen { opacity: 1; } .toast.fehler { background: #b91c1c; }
 .toast.klickbar { pointer-events: auto; }
@@ -266,7 +281,8 @@ details summary { cursor: pointer; color: var(--akzent); margin: .8rem 0 .4rem; 
 .seg.tabs button { font-weight: 600; }
 .app.verlaufmodus .nurdateien, .app.verlaufmodus .baum, .app.verlaufmodus .detail,
 .app.verlaufmodus .bar label:has(.rek), .app.verlaufmodus .suche, .app.verlaufmodus .sort, .app.verlaufmodus .groesse, .app.verlaufmodus .alle { display: none !important; }
-.app.verlaufmodus .body { grid-template-columns: 1fr; }
+.app.verlaufmodus .body { grid-template-columns: 1fr; } .app.verlaufmodus .body > .main { grid-column: 1; }
+.app.verlaufmodus .ordnerknopf, .app.verlaufmodus .detailknopf, .app.verlaufmodus .auswahl, .app.verlaufmodus .schleier { display: none !important; }
 .kachel .vw { position: absolute; bottom: 2.6rem; right: .35rem; font-size: .62rem; padding: .05rem .3rem; border-radius: .25rem; background: #b45309; color: #fff; }
 .verweisliste { font-size: .74rem; margin: 0; padding-left: 1rem; }
 .verweisliste li { margin: .15rem 0; word-break: break-word; }
@@ -274,10 +290,48 @@ details summary { cursor: pointer; color: var(--akzent); margin: .8rem 0 .4rem; 
 .vtab td { white-space: normal; vertical-align: top; }
 .vtab .status-rueckgaengig { color: var(--leise); text-decoration: line-through; }
 .vtab .dateiliste { font-size: .72rem; color: var(--leise); }
-@media (max-width: 1100px) { .body { grid-template-columns: var(--baum, 220px) 1fr; } .detail { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--rand); max-height: 45vh; } }
+/* Breit: Ordner/Details nach Wahl ausgeblendet */
+@container mo (min-width: 901px) {
+  .body.ohnebaum { --bw: 0px; } .body.ohnebaum .baum { display: none; }
+  .body.ohnedetail { --dw: 0px; } .body.ohnedetail .detail { display: none; }
+}
+@container mo (min-width: 901px) and (max-width: 1150px) { .body { --bw: 210px; --dw: 300px; } }
+/* Schmal: Galerie voll, Ordner und Details als Seitenleisten */
+@container mo (max-width: 900px) {
+  .nurschmal { display: inline-flex !important; } .nurbreit { display: none !important; }
+  .body { grid-template-columns: minmax(0, 1fr); } .body > .main { grid-column: 1; }
+  .baum, .detail { position: absolute; top: 0; bottom: 0; z-index: 30; background: var(--background, #fff); transition: transform .2s ease, box-shadow .2s; border: 0; visibility: hidden; }
+  .body.baumoffen .baum, .body.detailoffen .detail { box-shadow: 0 0 30px rgba(0,0,0,.25); visibility: visible; }
+  .baum { left: 0; width: min(85%, 20rem); transform: translateX(-105%); }
+  .detail { right: 0; width: min(94%, 26rem); transform: translateX(105%); padding-top: 0; }
+  .body.baumoffen .baum, .body.detailoffen .detail { transform: none; }
+  .schleier { display: block; position: absolute; inset: 0; z-index: 25; background: rgba(0,0,0,.3); opacity: 0; pointer-events: none; transition: opacity .2s; }
+  .body.baumoffen .schleier, .body.detailoffen .schleier { opacity: 1; pointer-events: auto; }
+  .detailkopf { display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; background: var(--background, #fff); padding: .6rem 0 .4rem; z-index: 2; }
+  .bar { gap: .4rem; padding: .5rem .6rem; }
+  .bar h1 { display: none; }
+  .bar .anzahl { font-size: .72rem; white-space: nowrap; }
+  .bar > * { order: 5; } .bar .rechts { display: contents; } .bar .rechts > * { order: 6; }
+  .bar .ordnerknopf { order: 0; } .bar .rechts > .detailknopf { order: 1; margin-left: auto; }
+  .bar .tabs { order: 2; width: 100%; } .bar .tabs button { flex: 1; }
+  .bar .anzahl { order: 7 !important; margin-left: auto; }
+  .bar .btn.alle { padding: .28rem .55rem; font-size: .75rem; }
+  .bar label { font-size: .75rem; }
+  .bar .suche { order: 10; width: 100% !important; }
+  .bar .groesse, .bar .sort, .bar .umschalt .kbd { display: none !important; }
+  .raster { grid-template-columns: repeat(auto-fill, minmax(min(var(--gr, 170px), 112px), 1fr)); gap: .4rem; padding: .5rem .5rem 2rem; }
+  .kachel .cap { font-size: .68rem; }
+  .pfad { padding: .45rem .6rem; }
+  table td:nth-child(3), table th:nth-child(3), table td:nth-child(5), table th:nth-child(5), table td:nth-child(6), table th:nth-child(6),
+  table td:nth-child(8), table th:nth-child(8), table td:nth-child(9), table th:nth-child(9), table td:nth-child(10), table th:nth-child(10) { display: none; }
+  td { white-space: normal; word-break: break-word; }
+  .umschalt.auswahl.an { background: var(--akzent); color: var(--primary-foreground, #fff); }
+  .viewer .vk { flex-wrap: wrap; } .viewer .nav { display: none; }
+}
 </style>
 <div class="app">
   <div class="bar">
+    <button class="umschalt ordnerknopf" title="Ordnerbaum ein-/ausblenden (B)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg><span>Ordner</span><span class="kbd">B</span></button>
     <h1 class="seitentitel">Medienarchiv</h1>
     <span class="seg tabs"><button data-quelle="medien" title="Mediathek (user/media)">Mediathek</button><button data-quelle="seiten" title="Dateien in den Seitenordnern (user/pages)">Seitenmedien</button><button data-quelle="verlauf" title="Alle Änderungen mit Sicherung, rückgängig machen">Verlauf</button></span>
     <span class="seg nurdateien"><button data-view="galerie">Galerie</button><button data-view="liste">Liste</button></span>
@@ -289,12 +343,13 @@ details summary { cursor: pointer; color: var(--akzent); margin: .8rem 0 .4rem; 
       <option value="pixel:desc">Pixel, meiste zuerst</option><option value="mtime:desc">Geändert, neueste zuerst</option><option value="typ:asc">Typ</option>
     </select>
     <input type="range" class="groesse" min="110" max="320" step="10" title="Vorschaugrösse">
-    <span class="rechts"><span class="anzahl leise"></span><button class="btn alle">Alle auswählen</button></span>
+    <span class="rechts"><span class="anzahl leise"></span><button class="umschalt auswahl nurschmal" title="Antippen markiert mehrere Dateien">Auswählen</button><button class="btn alle">Alle auswählen</button><button class="umschalt detailknopf" title="Details ein-/ausblenden (D)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></svg><span>Details</span><span class="kbd">D</span></button></span>
   </div>
   <div class="body">
-    <aside class="baum"><div class="baumkopf"><span class="titel leise">Ordner</span><button class="icon baumknopf" title="Ordnerbaum ein-/ausklappen">⇤</button></div><div class="baumliste"></div></aside>
+    <aside class="baum"><div class="baumkopf"><span class="titel leise">Ordner</span><button class="icon baumknopf" title="Ordnerbaum ausblenden (B)">✕</button></div><div class="baumliste"></div></aside>
     <section class="main" tabindex="0"><div class="pfad"></div><div class="inhalt"><p class="leer">Wird geladen…</p></div></section>
-    <aside class="detail"></aside>
+    <div class="schleier"></div>
+    <aside class="detail"><div class="detailkopf"><strong class="leise">Details</strong><button class="icon detailzu" title="Schliessen">✕</button></div><div class="detailinhalt"></div></aside>
   </div>
 </div>
 <div class="toast"></div>`;
@@ -313,7 +368,37 @@ details summary { cursor: pointer; color: var(--akzent); margin: .8rem 0 .4rem; 
         this.style.setProperty('--gr', `${this.#prefs.size}px`);
         gr.addEventListener('input', () => { this.#prefs.size = +gr.value; this.style.setProperty('--gr', `${gr.value}px`); this._prefsSpeichern(); });
         this.$('.alle').addEventListener('click', () => this._alleWaehlen());
-        this.$('.baumknopf').addEventListener('click', () => { this.#prefs.treeZu = !this.#prefs.treeZu; this._prefsSpeichern(); this._baumZeichnen(); });
+        this.$('.baumknopf').addEventListener('click', () => this._umschalten('baum'));
+        this.$('.ordnerknopf').addEventListener('click', () => this._umschalten('baum'));
+        this.$('.detailknopf').addEventListener('click', () => this._umschalten('details'));
+        this.$('.detailzu').addEventListener('click', () => { this._detailOffen = false; this._layout(); });
+        this.$('.schleier').addEventListener('click', () => { this._baumOffen = this._detailOffen = false; this._layout(); });
+        this.$('.auswahl').addEventListener('click', () => { this._auswahlModus = !this._auswahlModus; this._layout(); });
+        this._layout();
+    }
+
+    /** Ordner/Details: breit = dauerhaft ein-/ausblenden, schmal = als Seitenleiste öffnen/schliessen. */
+    _umschalten(was) {
+        if (this._schmal) {
+            if (was === 'baum') { this._baumOffen = !this._baumOffen; this._detailOffen = false; }
+            else { this._detailOffen = !this._detailOffen; this._baumOffen = false; }
+        } else {
+            this.#prefs[was] = !this.#prefs[was];
+            this._prefsSpeichern();
+        }
+        this._layout();
+    }
+
+    _layout() {
+        const b = this.$('.body');
+        if (!b) return;
+        b.classList.toggle('ohnebaum', !this.#prefs.baum);
+        b.classList.toggle('ohnedetail', !this.#prefs.details);
+        b.classList.toggle('baumoffen', !!(this._schmal && this._baumOffen));
+        b.classList.toggle('detailoffen', !!(this._schmal && this._detailOffen));
+        this.$('.ordnerknopf').classList.toggle('an', this._schmal ? !!this._baumOffen : this.#prefs.baum);
+        this.$('.detailknopf').classList.toggle('an', this._schmal ? !!this._detailOffen : this.#prefs.details);
+        this.$('.auswahl').classList.toggle('an', !!this._auswahlModus);
     }
 
     /* ---------- Ablage / Verlauf ---------- */
@@ -391,8 +476,6 @@ details summary { cursor: pointer; color: var(--akzent); margin: .8rem 0 .4rem; 
     }
 
     _baumZeichnen() {
-        this.$('.body').classList.toggle('baumzu', !!this.#prefs.treeZu);
-        this.$('.baumknopf').textContent = this.#prefs.treeZu ? '⇥' : '⇤';
         if (!this.#tree) return;
         const offen = new Set(this.#prefs.offen);
         const zeile = (k, tiefe) => {
@@ -414,7 +497,10 @@ details summary { cursor: pointer; color: var(--akzent); margin: .8rem 0 .4rem; 
             this._prefsSpeichern();
             this._baumZeichnen();
         }));
-        liste.querySelectorAll('.knoten').forEach(el => el.addEventListener('click', () => this._ordnerLaden(el.dataset.pfad, true)));
+        liste.querySelectorAll('.knoten').forEach(el => el.addEventListener('click', () => {
+            if (this._schmal) { this._baumOffen = false; this._layout(); }
+            this._ordnerLaden(el.dataset.pfad, true);
+        }));
     }
 
     /* ---------- Bilder laden ---------- */
@@ -570,6 +656,7 @@ details summary { cursor: pointer; color: var(--akzent); margin: .8rem 0 .4rem; 
 
     _klick(n, ev) {
         const i = this._liste[n];
+        if (this._auswahlModus && !ev.shiftKey) ev = { ...ev, ctrlKey: true, shiftKey: false, metaKey: false };
         if (ev.shiftKey && this.#anchor !== null) {
             const [a, b] = [Math.min(this.#anchor, n), Math.max(this.#anchor, n)];
             if (!(ev.ctrlKey || ev.metaKey)) this.#sel.clear();
@@ -585,6 +672,7 @@ details summary { cursor: pointer; color: var(--akzent); margin: .8rem 0 .4rem; 
         this.#focus = n;
         this._auswahlMarkieren();
         this._detailZeichnen();
+        if (this._schmal && !this._auswahlModus && !ev.tastatur && this.#sel.size === 1) { this._detailOffen = true; this._baumOffen = false; this._layout(); }
     }
 
     _alleWaehlen() {
@@ -607,6 +695,8 @@ details summary { cursor: pointer; color: var(--akzent); margin: .8rem 0 .4rem; 
     _taste(ev) {
         if (this.#viewer) return this._viewerTaste(ev);
         if (ev.target.closest('input, textarea, select')) return;
+        if (!ev.ctrlKey && !ev.metaKey && !ev.altKey && (ev.key === 'b' || ev.key === 'd')) { ev.preventDefault(); return this._umschalten(ev.key === 'b' ? 'baum' : 'details'); }
+        if (ev.key === 'Escape' && this._schmal && (this._baumOffen || this._detailOffen)) { this._baumOffen = this._detailOffen = false; return this._layout(); }
         const l = this._liste || [];
         if (!l.length) return;
         let n = this.#focus ?? -1;
@@ -616,7 +706,7 @@ details summary { cursor: pointer; color: var(--akzent); margin: .8rem 0 .4rem; 
         if (schritt) {
             ev.preventDefault();
             n = Math.max(0, Math.min(l.length - 1, n < 0 ? 0 : n + (this.#prefs.view === 'liste' && Math.abs(schritt) === 1 && ['ArrowLeft', 'ArrowRight'].includes(ev.key) ? 0 : schritt)));
-            this._klick(n, { shiftKey: ev.shiftKey, ctrlKey: false, metaKey: false });
+            this._klick(n, { shiftKey: ev.shiftKey, ctrlKey: false, metaKey: false, tastatur: true });
             this.$(`.inhalt [data-i="${n}"]`)?.scrollIntoView({ block: 'nearest' });
         } else if ((ev.key === 'Enter' || ev.key === ' ') && n >= 0) {
             ev.preventDefault();
@@ -638,7 +728,7 @@ details summary { cursor: pointer; color: var(--akzent); margin: .8rem 0 .4rem; 
     /* ---------- Detail ---------- */
 
     _detailZeichnen() {
-        const d = this.$('.detail');
+        const d = this.$('.detailinhalt');
         const g = this._gewaehlt;
         if (!g.length) {
             const l = this._liste || [];
@@ -652,7 +742,7 @@ details summary { cursor: pointer; color: var(--akzent); margin: .8rem 0 .4rem; 
     }
 
     _detailEinzeln(i) {
-        const d = this.$('.detail');
+        const d = this.$('.detailinhalt');
         const x = i.exif || {};
         const key = `${i.path}|900|`;
         d.innerHTML = `
@@ -723,7 +813,7 @@ details summary { cursor: pointer; color: var(--akzent); margin: .8rem 0 .4rem; 
 
     /** Detail fuer Nicht-Rasterbilder (SVG, PDF, Office, …): Vorschau, Texte, Herunterladen */
     _detailDatei(i) {
-        const d = this.$('.detail');
+        const d = this.$('.detailinhalt');
         d.innerHTML = `
             ${i.typ === 'svg' ? '<img class="gross svg" alt="">' : this._vorschauHtml(i, 0, 0)}
             <h2>${this.esc(i.title || i.file)}</h2>
@@ -768,7 +858,7 @@ details summary { cursor: pointer; color: var(--akzent); margin: .8rem 0 .4rem; 
     }
 
     _detailMehrere(g) {
-        const d = this.$('.detail');
+        const d = this.$('.detailinhalt');
         const summe = g.reduce((s, i) => s + i.size, 0);
         const mitBackup = g.filter(i => i.backup);
         const bilder = g.filter(i => i.typ === 'bild');
@@ -1030,11 +1120,62 @@ details summary { cursor: pointer; color: var(--akzent); margin: .8rem 0 .4rem; 
             this.#viewer = { el: v, img: v.querySelector('img'), s: 1, x: 0, y: 0, fit: 1, url: null };
             v.querySelectorAll('[data-a]').forEach(b => b.addEventListener('click', ev => { ev.stopPropagation(); this._viewerAktion(b.dataset.a); }));
             v.addEventListener('wheel', ev => { ev.preventDefault(); this._zoom(ev.deltaY < 0 ? 1.15 : 1 / 1.15, ev.clientX, ev.clientY); }, { passive: false });
-            v.addEventListener('dblclick', ev => { if (ev.target.closest('button')) return; this._viewerAktion(Math.abs(this.#viewer.s - this.#viewer.fit) < 1e-3 ? '100' : 'fit', ev.clientX, ev.clientY); });
-            let zug = null;
-            v.addEventListener('pointerdown', ev => { if (ev.target.closest('button')) return; zug = { x: ev.clientX, y: ev.clientY, ox: this.#viewer.x, oy: this.#viewer.y }; v.classList.add('zieht'); v.setPointerCapture(ev.pointerId); });
-            v.addEventListener('pointermove', ev => { if (!zug) return; this.#viewer.x = zug.ox + ev.clientX - zug.x; this.#viewer.y = zug.oy + ev.clientY - zug.y; this._transform(); });
-            v.addEventListener('pointerup', () => { zug = null; v.classList.remove('zieht'); });
+            v.addEventListener('dblclick', ev => { if (ev.target.closest('button') || Date.now() - (this._letzteTouch || 0) < 800) return; this._viewerAktion(Math.abs(this.#viewer.s - this.#viewer.fit) < 1e-3 ? '100' : 'fit', ev.clientX, ev.clientY); });
+            // Zeiger: Maus ziehen, ein Finger verschieben/wischen, zwei Finger zoomen, doppelt tippen zoomen
+            const zeiger = new Map();
+            let geste = null, tipp = null;
+            const start = () => {
+                const V = this.#viewer, p = [...zeiger.values()];
+                if (p.length === 1) geste = { typ: 'zug', x: p[0].x, y: p[0].y, ox: V.x, oy: V.y, s0: V.s, t: Date.now() };
+                else if (p.length === 2) {
+                    const mx = (p[0].x + p[1].x) / 2, my = (p[0].y + p[1].y) / 2;
+                    geste = { typ: 'pinch', d: Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y) || 1, s: V.s, mx, my, ox: V.x, oy: V.y };
+                }
+            };
+            v.addEventListener('pointerdown', ev => {
+                if (ev.target.closest('button')) return;
+                zeiger.set(ev.pointerId, { x: ev.clientX, y: ev.clientY, typ: ev.pointerType });
+                try { v.setPointerCapture(ev.pointerId); } catch { /* z.B. bereits beendeter Zeiger */ }
+                v.classList.add('zieht');
+                start();
+            });
+            v.addEventListener('pointermove', ev => {
+                if (!zeiger.has(ev.pointerId) || !geste) return;
+                zeiger.set(ev.pointerId, { x: ev.clientX, y: ev.clientY, typ: ev.pointerType });
+                const V = this.#viewer, p = [...zeiger.values()];
+                if (geste.typ === 'zug' && p.length === 1) {
+                    V.x = geste.ox + p[0].x - geste.x; V.y = geste.oy + p[0].y - geste.y;
+                } else if (geste.typ === 'pinch' && p.length === 2) {
+                    const d = Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y);
+                    const ns = Math.max(V.fit * 0.5, Math.min(8, geste.s * d / geste.d)), r = ns / geste.s;
+                    const mx = (p[0].x + p[1].x) / 2, my = (p[0].y + p[1].y) / 2;
+                    V.x = mx - (geste.mx - geste.ox) * r; V.y = my - (geste.my - geste.oy) * r; V.s = ns;
+                }
+                this._transform();
+            });
+            const ende = ev => {
+                if (!zeiger.has(ev.pointerId)) return;
+                const war = zeiger.get(ev.pointerId);
+                zeiger.delete(ev.pointerId);
+                const V = this.#viewer;
+                if (zeiger.size) { start(); return; }
+                v.classList.remove('zieht');
+                if (!V || !geste || geste.typ !== 'zug') { geste = null; return; }
+                const dx = ev.clientX - geste.x, dy = ev.clientY - geste.y, beiFit = Math.abs(geste.s0 - V.fit) < 1e-3;
+                geste = null;
+                if (war.typ === 'touch' && Math.hypot(dx, dy) < 10) {   // Tippen / Doppeltippen
+                    const jetzt = Date.now();
+                    if (tipp && jetzt - tipp.t < 320 && Math.hypot(ev.clientX - tipp.x, ev.clientY - tipp.y) < 40) {
+                        this._letzteTouch = jetzt; tipp = null;
+                        this._viewerAktion(Math.abs(V.s - V.fit) < 1e-3 ? 'ein2' : 'fit', ev.clientX, ev.clientY);
+                    } else tipp = { t: jetzt, x: ev.clientX, y: ev.clientY };
+                    return;
+                }
+                if (beiFit && Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) this._viewerAktion(dx < 0 ? 'next' : 'prev');
+                else if (beiFit) this._viewerAktion('fit');
+            };
+            v.addEventListener('pointerup', ende);
+            v.addEventListener('pointercancel', ende);
             window.addEventListener('resize', this._onResize = () => this._viewerAktion('fit'));
         }
         this.#viewer.n = n;
@@ -1123,6 +1264,7 @@ details summary { cursor: pointer; color: var(--akzent); margin: .8rem 0 .4rem; 
         }
         if (a === '100') return this._zoom(1 / v.s, cx ?? W / 2, cy ?? H / 2);
         if (a === 'ein') return this._zoom(1.3, W / 2, H / 2);
+        if (a === 'ein2') return this._zoom(Math.min(8, Math.max(2.5 * v.fit, 1)) / v.s, cx ?? W / 2, cy ?? H / 2);
         if (a === 'aus') return this._zoom(1 / 1.3, W / 2, H / 2);
     }
 

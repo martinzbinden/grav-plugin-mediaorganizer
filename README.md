@@ -24,6 +24,18 @@ lassen sich zentral sichten, umwandeln, umbenennen und aufräumen – mit
 Entstanden aus dem Medienarchiv des Plugins `riedackerhof-templates`
 (riedackerhof.ch), verallgemeinert für beliebige Dateitypen.
 
+## Layout und Mobilgeräte
+
+- **Arbeitsfokus umschalten:** Knöpfe «Ordner» und «Details» (Tasten **B** und **D**)
+  blenden Ordnerbaum und Detailspalte ein oder aus, z. B. «nur Galerie». Die Wahl
+  bleibt im Browser gespeichert.
+- **Schmal** (Plugin-Bereich bis 900 px: Handy, Tablet hochkant, schmales Fenster):
+  Galerie in voller Breite, Ordner und Details als einschiebbare Seitenleisten.
+  Antippen einer Datei öffnet die Details; «Auswählen» schaltet auf Mehrfachauswahl
+  per Antippen. Die Liste zeigt nur Name, Aufnahme und Grösse.
+- **Vollbild per Touch:** Zwei-Finger-Zoom, Wischen zum nächsten/vorherigen Bild,
+  Doppeltippen zum Zoomen bzw. Einpassen.
+
 ## Konvertierung
 
 Optional (`konvertierung.aktiv`): Bilder, die im Admin in die Mediathek
