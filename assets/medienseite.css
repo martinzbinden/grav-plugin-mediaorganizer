@@ -1,0 +1,54 @@
+/* Medienseite - Akzent aus dem Theme (--color-primary), sonst #459185 */
+.ms { --ms-akzent: var(--color-primary, #459185); --ms-dunkel: #2f6b62; --ms-rand: #d5e3df; --ms-hell: #f4f8f7; color: #1f2d2a; }
+.ms-h { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; margin: 2.2rem 0 .9rem; font-size: 1.4rem; font-weight: 700; color: var(--ms-dunkel); }
+.ms-marke { font-size: .75rem; font-weight: 600; padding: .15rem .6rem; border-radius: 999px; background: #eef1f0; color: #4b5b57; }
+.ms-marke--offen { background: #e2f1ec; color: var(--ms-dunkel); }
+.ms-hinweis { color: #4b5b57; }
+.ms-status { margin: 1rem 0; color: #4b5b57; }
+.ms-status--klein { font-size: .9rem; margin-top: -.6rem; }
+.ms-status a, .ms-hinweis a { color: var(--ms-dunkel); }
+.ms-meldung { margin: 1rem 0; padding: .8rem 1rem; border-radius: .6rem; background: #e2f1ec; color: #1f4d45; }
+.ms-meldung.ist-fehler { background: #f8e4df; color: #7a2a1c; }
+.ms-raster { display: grid; gap: 1.1rem; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+.ms-karte { display: flex; flex-direction: column; background: #fff; border: 1px solid var(--ms-rand); border-radius: .9rem; overflow: hidden; }
+.ms-vorschau { position: relative; display: flex; align-items: center; justify-content: center; aspect-ratio: 4 / 3; background: var(--ms-hell); }
+.ms-vorschau img { position: relative; max-width: 100%; max-height: 100%; object-fit: contain; }
+.ms-typ { position: absolute; font-size: 1.3rem; font-weight: 700; letter-spacing: .05em; color: #9fb5af; }
+.ms-vorschau:has(img) .ms-typ { display: none; }
+.ms-text { display: flex; flex-direction: column; gap: .35rem; padding: .8rem .9rem 1rem; flex: 1; }
+.ms-titel { margin: 0; font-size: 1rem; font-weight: 700; line-height: 1.3; }
+.ms-beschreibung { margin: 0; font-size: .9rem; color: #3b4a46; }
+.ms-info { margin: 0; font-size: .8rem; color: #6b7c77; }
+.ms-knopf { align-self: flex-start; margin-top: auto; padding: .5rem 1rem; border-radius: 999px; background: var(--ms-akzent); color: #fff !important; font-size: .9rem; font-weight: 600; text-decoration: none; }
+.ms-knopf:hover { background: var(--ms-dunkel); }
+.ms-verwalten { border-top: 1px dashed var(--ms-rand); padding: .5rem .9rem .8rem; font-size: .85rem; }
+.ms-verwalten summary { cursor: pointer; color: var(--ms-dunkel); }
+.ms-verwalten form, .ms-hochladen { display: grid; gap: .5rem; margin-top: .6rem; }
+.ms-verwalten label, .ms-hochladen label { display: grid; gap: .2rem; }
+.ms-verwalten input, .ms-verwalten textarea { width: 100%; box-sizing: border-box; padding: .4rem .5rem; border: 1px solid var(--ms-rand); border-radius: .4rem; font: inherit; }
+.ms-verwalten button, .ms-hochladen button { justify-self: start; padding: .4rem .9rem; border: 1px solid var(--ms-akzent); border-radius: 999px; background: #fff; color: var(--ms-dunkel); font: inherit; cursor: pointer; }
+.ms-verwalten .ms-loeschen { border-color: #c0533e; color: #9b3a28; }
+.ms-hochladen { margin-top: 1rem; padding: .9rem 1rem; border: 1px dashed var(--ms-akzent); border-radius: .8rem; background: var(--ms-hell); font-size: .9rem; }
+
+/* Anmeldung per E-Mail-Code */
+.ms-auth { margin: 1.4rem 0; }
+.ms-auth__box { max-width: 30rem; padding: 1.4rem 1.5rem 1.5rem; background: var(--ms-hell); border: 1px solid var(--ms-rand); border-radius: 1rem; }
+.ms-auth__title { margin: 0 0 .5rem; font-size: 1.25rem; line-height: 1.25; font-weight: 700; color: var(--ms-dunkel); }
+.ms-auth__lead { margin: 0 0 1rem; color: #3b4a46; }
+.ms-auth__msg { margin: 0 0 1rem; padding: .7rem .9rem; border-radius: .6rem; background: #e2f1ec; color: #1f4d45; }
+.ms-auth__msg.is-error { background: #f8e4df; color: #7a2a1c; }
+.ms-auth__form { display: grid; gap: .85rem; }
+.ms-auth__field { display: grid; gap: .25rem; font-size: .9rem; color: #3b4a46; }
+.ms-auth__input { width: 100%; box-sizing: border-box; padding: .7rem .9rem; font: inherit; font-size: 1rem; color: #1f2d2a; background: #fff; border: 1px solid var(--ms-rand); border-radius: .6rem; }
+.ms-auth__input:focus { outline: none; border-color: var(--ms-akzent); box-shadow: 0 0 0 3px rgba(69, 145, 133, .3); }
+.ms-auth__code { font-size: 1.6rem; letter-spacing: .35em; text-align: center; font-variant-numeric: tabular-nums; }
+.ms-auth__row { display: grid; gap: .85rem; grid-template-columns: 1fr 1fr; }
+@media (max-width: 420px) { .ms-auth__row { grid-template-columns: 1fr; } }
+.ms-auth__consent { display: flex; gap: .6rem; align-items: flex-start; font-size: .9rem; line-height: 1.4; color: #2f3d39; }
+.ms-auth__consent input { margin-top: .2rem; width: 1.1rem; height: 1.1rem; flex: none; accent-color: var(--ms-akzent); }
+.ms-auth__btn { padding: .8rem 1.4rem; font: inherit; font-weight: 700; color: #fff; background: var(--ms-akzent); border: 0; border-radius: 999px; cursor: pointer; }
+.ms-auth__btn:hover { background: var(--ms-dunkel); }
+.ms-auth__btn:disabled { opacity: .6; cursor: wait; }
+.ms-auth__aux { display: flex; flex-wrap: wrap; gap: .4rem 1.2rem; margin-top: 1rem; }
+.ms-auth__link { padding: 0; font: inherit; font-size: .9rem; color: var(--ms-dunkel); background: none; border: 0; text-decoration: underline; cursor: pointer; }
+.ms-auth__hp { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0; }

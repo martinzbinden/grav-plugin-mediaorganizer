@@ -196,6 +196,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .knoten:hover { background: var(--flaeche); }
 .knoten.an { background: color-mix(in srgb, var(--akzent) 16%, transparent); color: var(--akzent); font-weight: 600; }
 .knoten .pf { width: 1.1rem; text-align: center; color: var(--leise); flex: none; font-size: .7rem; }
+.knoten .zg { margin-left: .3rem; font-size: .7rem; opacity: .75; }
 .knoten .n { margin-left: auto; padding-left: .5rem; color: var(--leise); font-size: .72rem; font-weight: 400; }
 .knoten .name { overflow: hidden; text-overflow: ellipsis; }
 .icon { border: 0; background: transparent; cursor: pointer; padding: .2rem .35rem; border-radius: .3rem; color: var(--leise); }
@@ -483,7 +484,7 @@ details summary { cursor: pointer; color: var(--akzent); margin: .8rem 0 .4rem; 
             const auf = offen.has(k.path);
             let h = `<div class="knoten${k.path === this._ordner ? ' an' : ''}" data-pfad="${this.esc(k.path)}" style="padding-left:${tiefe * .9 + .2}rem">
                 <span class="pf" data-auf="${this.esc(k.path)}">${hatKinder ? (auf ? '▾' : '▸') : ''}</span>
-                <span class="name" title="${this.esc(k.ordner || k.name)}">${this.esc(k.name)}</span><span class="n">${k.total}</span></div>`;
+                <span class="name" title="${this.esc(k.ordner || k.name)}">${this.esc(k.name)}</span>${k.zugang ? `<span class="zg" title="${k.zugang === 'oeffentlich' ? 'Downloadseite: öffentlich' : 'Downloadseite: nur nach Anmeldung'}">${k.zugang === 'oeffentlich' ? '🌐' : '🔒'}</span>` : ''}<span class="n">${k.total}</span></div>`;
             if (hatKinder && auf) h += k.kinder.map(c => zeile(c, tiefe + 1)).join('');
             return h;
         };

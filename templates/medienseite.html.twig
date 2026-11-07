@@ -1,0 +1,93 @@
+{% extends 'partials/base.html.twig' %}
+{% set m = medienseite %}
+{% set ds = pages.find(m.datenschutz_seite ?: '/datenschutz') %}
+
+{% macro groesse(b) %}{% if b >= 1048576 %}{{ (b / 1048576)|number_format(1, '.', "'") }} MB{% else %}{{ (b / 1024)|round }} kB{% endif %}{% endmacro %}
+
+{% block content %}
+<div class="ms">
+  {{ page.content|raw }}
+
+  {% if m.meldung %}
+    <div class="ms-meldung{{ m.meldung.ok ? '' : ' ist-fehler' }}" role="status">
+      {% for z in m.meldung.zeilen %}<div>{{ z|e }}</div>{% endfor %}
+    </div>
+  {% endif %}
+
+  {% if m.angemeldet %}
+    <p class="ms-status">Angemeldet als {{ m.name|e }} ·
+      <a href="{{ uri.addNonce(base_url_relative ~ '/task' ~ config.system.param_sep ~ 'login.logout', 'logout-form', 'logout-nonce') }}">Abmelden</a></p>
+  {% elseif m.gesperrt %}
+    <div class="ms-auth" data-endpunkt="{{ m.endpunkt }}" data-seitenname="{{ m.seitenname|e }}" data-datenschutz="{{ ds ? ds.url : '' }}"></div>
+    <p class="ms-status ms-status--klein">Konto mit Passwort? <a href="{{ base_url ~ '/login' }}">Hier anmelden</a></p>
+  {% endif %}
+
+  {% for key, b in m.bereiche %}
+    <section class="ms-bereich" id="{{ key }}">
+      <h2 class="ms-h">{{ b.titel|e }}
+        <span class="ms-marke{{ b.oeffentlich ? ' ms-marke--offen' : '' }}">{{ b.oeffentlich ? 'öffentlich' : 'nach Anmeldung' }}</span>
+      </h2>
+
+      {% if not b.zugang %}
+        <p class="ms-hinweis">{% if b.anzahl %}{{ b.anzahl }} Datei{{ b.anzahl == 1 ? '' : 'en' }} – {% endif %}nach Anmeldung verfügbar.</p>
+      {% else %}
+        {% if b.items|length == 0 %}<p class="ms-hinweis">Noch keine Dateien.</p>{% endif %}
+        <div class="ms-raster">
+          {% for it in b.items %}
+            {% set url = m.endpunkt ~ '/datei/' ~ key ~ '/' ~ it.name|url_encode %}
+            <article class="ms-karte">
+              <a class="ms-vorschau" href="{{ url }}" target="_blank" rel="noopener" aria-label="{{ it.titel|e }} ansehen">
+                <span class="ms-typ">{{ it.ext }}</span>
+                {% if it.typ in ['bild', 'svg', 'pdf'] %}
+                  <img src="{{ m.endpunkt ~ '/vorschau/' ~ key ~ '/' ~ it.name|url_encode }}" alt="" loading="lazy" onerror="this.remove()">
+                {% endif %}
+              </a>
+              <div class="ms-text">
+                <h3 class="ms-titel">{{ it.titel|e }}</h3>
+                {% if it.beschreibung %}<p class="ms-beschreibung">{{ it.beschreibung|e }}</p>{% endif %}
+                <p class="ms-info">{{ it.ext }} · {{ _self.groesse(it.groesse) }}{% if it.copyright %} · © {{ it.copyright|e }}{% endif %}</p>
+                <a class="ms-knopf" href="{{ url }}?dl=1">Herunterladen</a>
+              </div>
+              {% if m.verwalten %}
+                <details class="ms-verwalten">
+                  <summary>Bearbeiten</summary>
+                  <form method="post" action="{{ m.endpunkt }}/verwalten">
+                    <input type="hidden" name="nonce" value="{{ m.nonce }}">
+                    <input type="hidden" name="zurueck" value="{{ page.url }}#{{ key }}">
+                    <input type="hidden" name="bereich" value="{{ key }}">
+                    <input type="hidden" name="name" value="{{ it.name|e }}">
+                    <input type="hidden" name="aktion" value="meta">
+                    <label>Titel<input name="titel" value="{{ it.titel|e }}" maxlength="160"></label>
+                    <label>Beschreibung<textarea name="beschreibung" rows="3" maxlength="1000">{{ it.beschreibung|e }}</textarea></label>
+                    <label>Copyright<input name="copyright" value="{{ it.copyright|e }}" maxlength="160"></label>
+                    <button type="submit">Speichern</button>
+                  </form>
+                  <form method="post" action="{{ m.endpunkt }}/verwalten" onsubmit="return confirm('{{ it.name|e('js') }} wirklich löschen?')">
+                    <input type="hidden" name="nonce" value="{{ m.nonce }}">
+                    <input type="hidden" name="zurueck" value="{{ page.url }}#{{ key }}">
+                    <input type="hidden" name="bereich" value="{{ key }}">
+                    <input type="hidden" name="name" value="{{ it.name|e }}">
+                    <input type="hidden" name="aktion" value="loeschen">
+                    <button type="submit" class="ms-loeschen">Datei löschen</button>
+                  </form>
+                </details>
+              {% endif %}
+            </article>
+          {% endfor %}
+        </div>
+        {% if m.verwalten %}
+          <form class="ms-hochladen" method="post" action="{{ m.endpunkt }}/verwalten" enctype="multipart/form-data">
+            <input type="hidden" name="nonce" value="{{ m.nonce }}">
+            <input type="hidden" name="zurueck" value="{{ page.url }}#{{ key }}">
+            <input type="hidden" name="bereich" value="{{ key }}">
+            <input type="hidden" name="aktion" value="hochladen">
+            <label>Dateien hinzufügen ({{ b.titel|e }}, max. {{ m.max_mb }} MB je Datei)
+              <input type="file" name="dateien[]" multiple accept="{{ m.erlaubt }}" required></label>
+            <button type="submit">Hochladen</button>
+          </form>
+        {% endif %}
+      {% endif %}
+    </section>
+  {% endfor %}
+</div>
+{% endblock %}

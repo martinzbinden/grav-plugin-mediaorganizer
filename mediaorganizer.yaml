@@ -24,3 +24,51 @@ konvertierung:
 verlauf:
   tage: 60
   max_mb: 1000
+# Downloadseite (frueher Plugin "medienseite"): Seite mit template: medienseite,
+# Downloads in Bereichen, je Bereich oeffentlich oder nur fuer Registrierte
+# (Anmeldung per E-Mail-Code). Braucht die Plugins login und email.
+medienseite:
+  aktiv: false
+  # Name in E-Mails und in der Einwilligung - leer = Titel der Website (site.title)
+  seitenname: ''
+  # Ablage: leer = Mediathek (user/media), die Bereiche sind dann Ordner im
+  # Medienarchiv. Sonst ein Ordner relativ zum Grav-Ordner, am besten ausserhalb
+  # des Webverzeichnisses. Je Bereich ein Unterordner; das Plugin schreibt je
+  # Bereich eine .htaccess (oeffentlich frei, gesperrt nur ueber das Plugin).
+  media_dir: ''
+  # Dateien ausserhalb der Bereiche direkt abrufbar: true/false schreibt eine
+  # .htaccess in die oberste Ebene; leer = Mediathek nicht anfassen, eigener
+  # Ablageordner gesperrt
+  wurzel_oeffentlich: null
+  # Bilder in den Bereichen automatisch umwandeln (Konvertierung oben)? Standard
+  # nein: Pressebilder bleiben Originale
+  konvertieren: false
+  # Anmelde-Zustand (Codes, Freigabe-Links), gesperrt per .htaccess
+  daten_dir: 'user://data/medienseite'
+  # Route der Downloadseite (fuer Links in E-Mails) und der Datenschutzerklaerung
+  seite: '/medien'
+  datenschutz_seite: '/datenschutz'
+  # Wer auf der Seite Dateien hochladen, bearbeiten und loeschen darf
+  verwalten_permission: 'admin.login'
+  max_upload_mb: 50
+  # Farbe der Freigabe- und Hinweisseiten (die Seite selbst nutzt --color-primary des Themes)
+  akzentfarbe: '#2f6b62'
+  bereiche:
+    - schluessel: pressebilder
+      titel: 'Pressebilder'
+      oeffentlich: false
+    - schluessel: dokumente
+      titel: 'Berichte und Dokumente'
+      oeffentlich: false
+    - schluessel: grafiken
+      titel: 'Grafiken und Karten'
+      oeffentlich: false
+    - schluessel: logos
+      titel: 'Logos und Vorlagen'
+      oeffentlich: false
+  auth:
+    registrierung: true
+    # approval = neue Konten erst nach Freigabe aktiv; open = sofort nach Code-Bestaetigung
+    modus: approval
+    # leer = Empfaenger aus der E-Mail-Konfiguration der Website (plugins.email.to)
+    benachrichtigung: ''

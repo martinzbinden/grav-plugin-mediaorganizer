@@ -151,8 +151,15 @@ class ApiController extends AbstractApiController
             $name = $rel === '' ? ($this->q === 'seiten' ? 'Seiten' : $this->plugin()->titel()) : basename($rel);
             $titel = ($this->q === 'seiten' && $rel !== '') ? $this->seitentitel($abs) : null;
 
-            return ['name' => $titel ?: $name, 'ordner' => basename($rel), 'path' => $rel, 'direkt' => $direkt,
+            $knoten = ['name' => $titel ?: $name, 'ordner' => basename($rel), 'path' => $rel, 'direkt' => $direkt,
                 'total' => $direkt + array_sum(array_column($kinder, 'total')), 'kinder' => $kinder];
+            // Bereich der Downloadseite: oeffentlich oder gesperrt
+            if ($this->q === 'medien' && $rel !== '' && !str_contains($rel, '/')
+                && ($zugang = $this->plugin()->bereichZugang($rel)) !== null) {
+                $knoten['zugang'] = $zugang;
+            }
+
+            return $knoten;
         };
         $baum = $walk($root, '');
         $baum['quelle'] = $this->q;

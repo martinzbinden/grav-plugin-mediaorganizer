@@ -22,6 +22,10 @@ use RocketTheme\Toolbox\Event\Event;
  * Ordner liegen, werden ins Zielformat umgewandelt (Standard WebP), siehe
  * classes/Konverter.php.
  *
+ * Downloadseite (optional, plugins.mediaorganizer.medienseite, frueher Plugin
+ * "medienseite"): oeffentliche Seite mit Bereichen, Anmeldung per E-Mail-Code,
+ * siehe classes/Medienseite/Frontend.php.
+ *
  * Rechte: lesen/herunterladen api.media.read, aendern api.media.write.
  * Schnittstellen: classes/ApiController.php (/api/v1/mediaorganizer/...).
  * Entstanden aus dem Medienarchiv des Plugins riedackerhof-templates.
@@ -68,7 +72,94 @@ class MediaorganizerPlugin extends Plugin
             'onApiRegisterRoutes' => ['onApiRegisterRoutes', 0],
             'onApiSidebarItems' => ['onApiSidebarItems', 0],
             'onApiPluginPageInfo' => ['onApiPluginPageInfo', 0],
+            // Downloadseite (medienseite.aktiv)
+            'onPluginsInitialized' => ['onPluginsInitialized', 0],
         ];
+    }
+
+    /* ---------------- Downloadseite ---------------- */
+
+    private ?\Grav\Plugin\Mediaorganizer\Medienseite\Frontend $medienseite = null;
+    private ?bool $medienseiteAn = null;
+
+    /**
+     * Downloadseite an? Nur mit medienseite.aktiv, eingeschaltetem login-Plugin
+     * und solange das fruehere Plugin "medienseite" nicht selbst laeuft.
+     */
+    public function medienseiteAktiv(): bool
+    {
+        if ($this->medienseiteAn !== null) {
+            return $this->medienseiteAn;
+        }
+        $an = (bool) $this->cfg('medienseite.aktiv', false);
+        if ($an && $this->config->get('plugins.medienseite.enabled')
+            && $this->grav['locator']->findResource('plugins://medienseite/medienseite.php')) {
+            $this->grav['log']->notice('Media Organizer: Downloadseite bleibt aus, solange das Plugin "medienseite" aktiv ist.');
+            $an = false;
+        }
+        if ($an && !$this->config->get('plugins.login.enabled')) {
+            $this->grav['log']->warning('Media Organizer: Downloadseite braucht das Plugin "login".');
+            $an = false;
+        }
+
+        return $this->medienseiteAn = $an;
+    }
+
+    public function medienseite(): ?\Grav\Plugin\Mediaorganizer\Medienseite\Frontend
+    {
+        if (!$this->medienseiteAktiv()) {
+            return null;
+        }
+
+        return $this->medienseite ??= new \Grav\Plugin\Mediaorganizer\Medienseite\Frontend($this->grav, (array) $this->cfg('medienseite', []));
+    }
+
+    /**
+     * Zugriffsregel eines Bereichs der Downloadseite fuer einen Mediathek-Pfad:
+     * 'oeffentlich', 'gesperrt' oder null (kein Bereich, eigene Ablage, aus).
+     */
+    public function bereichZugang(string $rel): ?string
+    {
+        $ms = $this->medienseite();
+        if (!$ms || $ms->mediaRoot() !== $this->root('medien')) {
+            return null;
+        }
+        $b = $ms->bereiche()[explode('/', trim($rel, '/'))[0]] ?? null;
+
+        return $b ? ($b['oeffentlich'] ? 'oeffentlich' : 'gesperrt') : null;
+    }
+
+    public function onPluginsInitialized(): void
+    {
+        $ms = $this->medienseite();
+        if (!$ms) {
+            return;
+        }
+        // Auch im Admin: nach dem Umschalten "oeffentlich" sofort gueltig
+        $ms->zugriffAbgleichen();
+        if ($this->isAdmin()) {
+            return;
+        }
+        $this->enable([
+            'onPagesInitialized' => ['onPagesInitialized', 0],
+            'onTwigTemplatePaths' => ['onTwigTemplatePaths', 0],
+            'onTwigSiteVariables' => ['onTwigSiteVariables', 0],
+        ]);
+    }
+
+    public function onPagesInitialized(): void
+    {
+        $this->medienseite()?->onPagesInitialized();
+    }
+
+    public function onTwigSiteVariables(): void
+    {
+        $this->medienseite()?->onTwigSiteVariables();
+    }
+
+    public function onTwigTemplatePaths(): void
+    {
+        $this->grav['twig']->twig_paths[] = __DIR__ . '/templates';
     }
 
     /* ---------------- Konfiguration ---------------- */
@@ -168,6 +259,10 @@ class MediaorganizerPlugin extends Plugin
     {
         $dir = $this->pfad($sub);
         if (!$dir || !is_dir($dir)) {
+            return 0;
+        }
+        // Bereiche der Downloadseite behalten ihre Originale (ausser medienseite.konvertieren)
+        if (!$this->cfg('medienseite.konvertieren', false) && $this->bereichZugang($sub) !== null) {
             return 0;
         }
         $k = $this->konverter();

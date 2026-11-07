@@ -1,8 +1,8 @@
 name: Media Organizer
 slug: mediaorganizer
 type: plugin
-version: 1.3.0
-description: 'Datei-Browser für die Mediathek (user/media) im Admin2: Ordnerbaum, Galerie und Liste, Vorschau, Herunterladen einzeln oder als ZIP, Texte und EXIF (WebP/JPEG) bearbeiten, Bilder optimieren, wiederherstellen und automatisch in ein Standardformat (WebP, JPEG, AVIF) umwandeln.'
+version: 1.4.0
+description: 'Datei-Browser für die Mediathek (user/media) im Admin2: Ordnerbaum, Galerie und Liste, Vorschau, Herunterladen einzeln oder als ZIP, Texte und EXIF (WebP/JPEG) bearbeiten, Bilder optimieren, wiederherstellen und automatisch in ein Standardformat (WebP, JPEG, AVIF) umwandeln. Optional eine öffentliche Downloadseite mit Bereichen, öffentlich oder nur für Registrierte (Anmeldung per E-Mail-Code).'
 icon: images
 author:
   name: Martin Zbinden
@@ -100,3 +100,98 @@ form:
       label: Höchstens (MB, älteste werden zuerst entfernt)
       default: 1000
       validate: { min: 10 }
+    medienseite_titel:
+      type: section
+      title: Downloadseite
+      text: 'Öffentliche Seite mit Downloads in Bereichen (Seite mit Vorlage «medienseite»). Jeder Bereich ist öffentlich oder nur für registrierte Personen (Anmeldung per E-Mail-Code). Braucht die Plugins login und email.'
+    medienseite.aktiv:
+      type: toggle
+      label: Downloadseite aktiv
+      default: 0
+      options: { 1: Ja, 0: Nein }
+      validate: { type: bool }
+    medienseite.bereiche:
+      type: list
+      label: Bereiche
+      style: vertical
+      btnLabel: 'Bereich hinzufügen'
+      help: 'Der Schlüssel ist der Ordnername in der Ablage; ihn nach dem ersten Hochladen nicht mehr ändern. Öffentlich = ohne Anmeldung sichtbar und herunterladbar.'
+      fields:
+        .schluessel:
+          type: text
+          label: 'Schlüssel (a–z, 0–9, - und _)'
+          validate: { required: true, pattern: '[a-z0-9_-]+' }
+        .titel:
+          type: text
+          label: Titel
+          validate: { required: true }
+        .oeffentlich:
+          type: toggle
+          label: 'Öffentlich'
+          default: 0
+          options: { 1: Ja, 0: Nein }
+          validate: { type: bool }
+    medienseite.auth.registrierung:
+      type: toggle
+      label: 'Selbstregistrierung erlaubt'
+      default: 1
+      options: { 1: Ja, 0: Nein }
+      validate: { type: bool }
+    medienseite.auth.modus:
+      type: select
+      label: 'Neue Konten'
+      default: approval
+      options:
+        approval: 'Erst nach Freigabe aktiv (Freigabe-Link per E-Mail)'
+        open: 'Sofort nach Bestätigung der E-Mail-Adresse aktiv'
+    medienseite.auth.benachrichtigung:
+      type: email
+      label: 'Freigabe-Anfragen an'
+      help: 'Leer = Empfänger aus der E-Mail-Konfiguration der Website'
+      validate: { type: email }
+    medienseite.seitenname:
+      type: text
+      label: 'Name in E-Mails und Einwilligung'
+      help: 'Leer = Titel der Website'
+    medienseite.seite:
+      type: text
+      label: 'Route der Downloadseite'
+      default: /medien
+    medienseite.datenschutz_seite:
+      type: text
+      label: 'Route der Datenschutzerklärung'
+      default: /datenschutz
+    medienseite.media_dir:
+      type: text
+      label: 'Ablageordner'
+      placeholder: 'leer = Mediathek (user/media)'
+      help: 'Leer: die Bereiche sind Ordner in der Mediathek und erscheinen im Medienarchiv. Sonst relativ zum Grav-Ordner, am besten ausserhalb des Webverzeichnisses.'
+    medienseite.wurzel_oeffentlich:
+      type: select
+      label: 'Dateien ausserhalb der Bereiche direkt abrufbar'
+      help: 'Öffentliche Bereiche sind immer direkt abrufbar, gesperrte nie.'
+      default: ''
+      options:
+        '': 'Nicht verwalten (Mediathek) bzw. gesperrt (eigener Ablageordner)'
+        1: 'Ja'
+        0: 'Nein'
+    medienseite.konvertieren:
+      type: toggle
+      label: 'Bilder in den Bereichen automatisch umwandeln'
+      help: 'Nein: Pressebilder und Vorlagen bleiben im Originalformat.'
+      default: 0
+      options: { 1: Ja, 0: Nein }
+      validate: { type: bool }
+    medienseite.verwalten_permission:
+      type: text
+      label: 'Recht zum Verwalten der Dateien auf der Seite'
+      default: admin.login
+    medienseite.max_upload_mb:
+      type: number
+      label: 'Maximale Dateigrösse beim Hochladen (MB)'
+      default: 50
+      validate: { type: int, min: 1, max: 500 }
+    medienseite.akzentfarbe:
+      type: text
+      label: 'Akzentfarbe der Hinweis- und Freigabeseiten'
+      default: '#2f6b62'
